@@ -58,20 +58,8 @@ fileConvert()
 {
   i="$1"
   if [ -f "${i}" ] && [ "${i:0:7}" != "#_tmps_" ]; then
-    #echo "Convert $i $icc"
     fname="${i%.*}"
     fext="${i##*.}"
-
-    icc=$(get_icc_profile_name "$i")
-
-    case "$icc" in
-      "sRGB IEC61966-2.1"|"R98 - DCF basic file (sRGB)")
-        icc_convert=0
-      ;;
-      *)
-        icc_convert=1
-      ;;
-    esac
 
     case "$fext" in
       PNG|APNG|GIF|JPEG|JPG|EXR|PPM|PFM|PGX|png|apng|gif|jpeg|jpg|exr|ppm|pfm|pgx)
@@ -83,6 +71,17 @@ fileConvert()
         *)
         extconvert=1  
         ;;
+    esac
+
+    icc=$(get_icc_profile_name "$i")
+
+    case "$icc" in
+      "sRGB IEC61966-2.1"|"R98 - DCF basic file (sRGB)")
+        icc_convert=0
+      ;;
+      *)
+        icc_convert=1
+      ;;
     esac
 
     if [ $extconvert -eq 1 ] || [ $icc_convert -eq 1 ]; then
