@@ -76,7 +76,12 @@ get_icc_profile_name()
   elif [ -n "$colorspace" ]; then
       echo "$colorspace"
   else 
-    echo "none"
+    color_mode=$(identify -format "%[colorspace]" "$1")
+    if [ -n "$color_mode" ]; then 
+      echo $color_mode
+    else
+      echo "none"
+    fi
   fi
 }
 
@@ -156,11 +161,19 @@ fileConvert()
     ;;
   esac
 
+  colorspace=""
   icc=$(get_icc_profile_name "$i")
+  echo $i $icc
 
   case "$icc" in
     "sRGB IEC61966-2.1"|"R98 - DCF basic file (sRGB)"|"none")
       icc_convert=0
+    ;;
+
+    "CMYK")
+      colorspace="-colorspace RGB"
+      icc_convert=0
+      extconvert=1
     ;;
 
     *)
@@ -176,7 +189,7 @@ fileConvert()
       cd __tmps__
 
       echo convert -quality 100 "$i"  +profile \* -profile ~/sRGB2014.icc  "#_tmps_${fname}.jpg"
-      convert -quality 100 "$i"  +profile * -profile ~/sRGB2014.icc  "../#_tmps_${fname}.jpg" 2>/dev/null 
+      convert -quality 100 "$i" +profile * -profile ~/sRGB2014.icc  "../#_tmps_${fname}.jpg" 2>/dev/null 
 
       if [ $? -ne 0 ] ; then 
         #conversion fail skip the job
@@ -189,8 +202,8 @@ fileConvert()
       rm -r __tmps__
 
     else 
-      echo convert -quality 100 "$i" "#_tmps_${fname}.jpg"
-      convert -quality 100 "$i"  "#_tmps_${fname}.jpg" 2>/dev/null 
+      echo convert -quality 100 $colorspace "$i" "#_tmps_${fname}.jpg"
+      convert -quality 100 $colorspace "$i" "#_tmps_${fname}.jpg" 2>/dev/null 
 
       #conversion fail skip the job
       if [ $? -ne 0 ] ; then return; fi
