@@ -5,13 +5,15 @@
 # available parameter
 # -r recursive , include all sub directories
 # -del delete source file 
-# -q=xx image quality
+# -q=xx 1-100 image quality the higher is better large file size
+# -e=x 1-9 Convertion effort higher is slower
 
 # Function to parse command line arguments and extract attributes and their values
-quality=0
 deletefile=0
 reqursive=0
+copyexif=0
 jxlquality=''
+jxleffort='-e 7'
 darktable=/Applications/darktable.app/Contents/MacOS/darktable-cli
 
 parse_arguments() 
@@ -23,16 +25,34 @@ parse_arguments()
         deletefile=1
         shift
         ;;
+
       -r)
         #include sub dir
         reqursive=1
         shift
         ;;
+
+      -exif)
+        # copy exif from source file
+        # LR can read JXL exif but exiftool can't , set it to 1 so exiftool can read it too
+        copyexif=1
+        shift
+        ;;
+
       -q=*)
         # Handle attributes with values
         quality=$(echo "$1"|cut -d= -f2-)
         if [ $quality -gt 0 ] && [ $quality -lt 100 ]; then
           jxlquality=" --lossless_jpeg=0 -q $quality "
+        fi
+        shift
+        ;;
+
+      -e=*)
+        # Handle attributes with values
+        effort=$(echo "$1"|cut -d= -f2-)
+        if [ $effort -ge 0 ] && [ $effort -le 9 ]; then
+          jxleffort="-e $effort"
         fi
         shift
         ;;
@@ -67,13 +87,23 @@ fileConvert()
   #check if file exist
   if [ ! -f "${i}" ] ; then return; fi;
 
+  source_width=$(identify -format "%w," "$i" 2>/dev/null | cut -d, -f1) #just in case the file have multiple image just return the first one
+
+  # Check if source_width is an integer
+  if [[ ! "$source_width" =~ ^[0-9]+$ ]]; then
+    # source_width is not an integer, set it to 0
+    source_width=0
+  fi
+
+  if [ $source_width -le 1 ];then return; fi #not an image file, sometime it not an image file but identify return width 1
+
   fname="${i%.*}"
   fext="${i##*.}"
   fext=$(echo "$fext" | tr '[:upper:]' '[:lower:]')
 
   case "$fext" in
     #this ext list base on image supported by cjxl
-    png|apng|gif|jpeg|jpg|exr|ppm|pfm|pgx)
+    png|apng|gif|jiff|jpe|jpeg|jpg|exr|ppm|pfm|pgx)
       extconvert=0
     ;;
 
@@ -87,9 +117,8 @@ fileConvert()
       if [ ! -s "#_tmps_${fname}.jpg" ]; then 
          rm "#_tmps_${fname}.jpg"
       else
-        #check preview size, sometime it only a thumbnail
-         ori_width=$(identify -format "%w" "$i")
-         ori_width=$((ori_width - 32))
+        #check preview size, sometime the image is slightly smaller but not much, if the diffrence less then 32 pixel just use it, but sometime it only a thumbnail 
+         ori_width=$((source_width - 32))
          preview_width=$(identify -format "%w" "#_tmps_${fname}.jpg")
          
          if [ $ori_width -gt $preview_width  ]; then
@@ -121,14 +150,9 @@ fileConvert()
       extconvert=0
     ;;
 
-    #this ext list base on image supported by imagemagick
-    aai|ai|art|avif|avs|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cin|cip|cur|cut|dcm|dicom|dcraw|dcx|dds|dfont|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|ff|ftp|fts|ftxt|heic|heif|hrz|j2c|j2k|jng|jnx|jpc|jpe|jpm|jps|jpt|miff|mpc|pcds|pcl|pct|pcx|pdb|pes|pfa|pfb|pgm|phm|pix|pjpeg|pnm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|ras|rgf|rla|rle|rmf|scr|sct|sfw|sgi|six|svg|svgz|tga|tif|tiff|tim|tm2|ttc|ttf|vips|wbmp|webm|webp|wpg|xcf|xpm)
-      extconvert=1  
-    ;;
-
-    # do not process other file
+    # convert all other file let imagemagick do the rest
     *)
-      return
+      extconvert=1
     ;;
   esac
 
@@ -153,7 +177,13 @@ fileConvert()
 
       echo convert -quality 100 "$i"  +profile \* -profile ~/sRGB2014.icc  "#_tmps_${fname}.jpg"
       convert -quality 100 "$i"  +profile * -profile ~/sRGB2014.icc  "../#_tmps_${fname}.jpg" 2>/dev/null 
-      if [ $? -ne 0 ] ; then cd ..; return; fi
+
+      if [ $? -ne 0 ] ; then 
+        #conversion fail skip the job
+        cd ..; 
+        rm -r __tmps__
+        return; 
+      fi
 
       cd ..
       rm -r __tmps__
@@ -161,6 +191,8 @@ fileConvert()
     else 
       echo convert -quality 100 "$i" "#_tmps_${fname}.jpg"
       convert -quality 100 "$i"  "#_tmps_${fname}.jpg" 2>/dev/null 
+
+      #conversion fail skip the job
       if [ $? -ne 0 ] ; then return; fi
     fi
 
@@ -169,6 +201,9 @@ fileConvert()
         rm "$i"
       fi
       i="#_tmps_${fname}.jpg"
+
+    # some time a file have multiple image just use the first one
+    # next maybe an option to convert all image to individual jxl  
     elif [ -f "#_tmps_${fname}-0.jpg" ] ; then
       mv "#_tmps_${fname}-0.jpg" "#_tmps_${fname}.jpg"
       if [ $deletefile -eq 1 ]; then
@@ -192,13 +227,15 @@ fileConvert()
       targetfile="${fname}_${unique_suffix}.jxl"
   fi  
 
-  echo cjxl $jxlquality  "$i" "${targetfile}"
-  cjxl $jxlquality  "$i" "${targetfile}" 2>/dev/null
+  echo cjxl $jxlquality $jxleffort "$i" "${targetfile}"
+  cjxl $jxlquality $jxleffort "$i" "${targetfile}" 2>/dev/null
 
   if [ $? -eq 0 ] && [ -f "${targetfile}" ]; then
     #copy exif from source
-    #exiftool -tagsfromfile "$i" -all:all "${targetfile}"
-    #rm "${targetfile}_original"
+    if [ $copyexif -eq 1 ]; then 
+      exiftool -tagsfromfile "$i" -all:all "${targetfile}"
+      rm "${targetfile}_original" 2>/dev/null
+    fi
 
     if [ $deletefile -eq 1 ]; then rm "$i";fi
   fi
@@ -220,6 +257,7 @@ dirConvert()
     fi
 
     if [ -f "${i}" ] ; then
+      #do not process jxl and temp file
       if [[ "${i}" == *.jxl || "${i}" == *.JXL  || "${i}" == \#_tmps_*.jpg ]]; then
         continue
       fi
