@@ -195,8 +195,12 @@ fileConvert()
   echo cjxl $jxlquality  "$i" "${targetfile}"
   cjxl $jxlquality  "$i" "${targetfile}" 2>/dev/null
 
-  if [ $? -eq 0 ] && [ -f "${targetfile}" ] && [ $deletefile -eq 1 ]; then
-    rm "$i"
+  if [ $? -eq 0 ] && [ -f "${targetfile}" ]; then
+    #copy exif from source
+    #exiftool -tagsfromfile "$i" -all:all "${targetfile}"
+    #rm "${targetfile}_original"
+
+    if [ $deletefile -eq 1 ]; then rm "$i";fi
   fi
 
   #cleanup all temp
