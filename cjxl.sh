@@ -123,7 +123,7 @@ tmpsdir="__tmps__${fname}${fext}__"
 fext=$(echo "$fext" | tr '[:upper:]' '[:lower:]')
 
 # Run the identify command with structured output and capture it
-output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %r\nICC Description: %[icc:description]\n" "$input_file" 2>&1)
+output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\n" "$input_file" 2>&1)
 #echo $output
 filetype=$(echo "$output" | grep  -m 1 "Filetype" | cut -d: -f2- | sed 's/^[ \t]*//')
 filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
@@ -177,7 +177,7 @@ case "$filetype" in
   3fr|ari|arw|bay|bmq|cap|cine|cr2|cr3|crw|cs1|dc2|dcr|dng|gpr|erf|fff|exr|ia|iiq|k25|kc2|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|pfm|pxn|qtk|raf|raw|rdc|rw1|rw2|sr2|srf|srw|sti|x3f)
 
     #extract jpeg preview if available
-    #echo exiftool -b -JpgFromRaw "$input_file"
+    echo exiftool -b -JpgFromRaw "$input_file"
     exiftool -b -JpgFromRaw "$input_file" > "$tmpsfile" 2>/dev/null
 
     #if file size 0 raw don't have preview
@@ -198,7 +198,7 @@ case "$filetype" in
       exiftool -tagsfromfile "$input_file" -all:all "$tmpsfile" >/dev/null 2>/dev/null
     else 
       #convert to jpg using darktable 
-      #echo $darktable "$input_file" "$tmpsfile" --icc-type SRGB
+      echo $darktable "$input_file" "$tmpsfile" --icc-type SRGB
       $darktable "$input_file" "$tmpsfile" --icc-type SRGB  >/dev/null 2>/dev/null
 
       #if conversion fail remove temp file
@@ -226,35 +226,44 @@ case "$filetype" in
   ;;
 esac
 
-if [ $fixcolorspace -eq 1 ]  || [ $extconvert -eq 1 ]; then 
-  # fix broken corrupt image color space or color space other than RGB
-  if [ $fixcolorspace -eq 1 ] || [ "$colorspace" != "sRGB" ]; then 
-    mkdir "${tmpsdir}"
-    cp "$input_file" "${tmpsdir}"
-    cd "${tmpsdir}"
+# fix broken corrupt image color space or color space other than RGB
+if [ "$colorspace" == "Gray" ]; then
+  echo convert -quality 100 -colorspace sRGB -type truecolor "$input_file" "$tmpsfile"
+  convert -quality 100 -colorspace sRGB -type truecolor "$input_file" "$tmpsfile" #2>/dev/null 
 
-    #echo convert -quality 100 "$input_file"  +profile \* -profile ~/sRGB2014.icc  "$tmpsfile"
-    convert -quality 100 "$input_file" +profile * -profile ~/sRGB2014.icc  "../$tmpsfile" 2>/dev/null 
+  #conversion fail skip the job
+  if [ $? -ne 0 ] ; then 
+    echo conversion fail skip the job >&2
+    exitapp 1
+  fi  
 
-    if [ $? -ne 0 ] ; then 
-      #conversion fail skip the job
-      echo conversion fail skip the job >&2
-      exitapp 1
-    fi
 
-    cd ..
-    rm -r "${tmpsdir}"
+elif [ $fixcolorspace -eq 1 ] ; then 
+  mkdir "${tmpsdir}"
+  cp "$input_file" "${tmpsdir}"
+  cd "${tmpsdir}"
 
-  elif [ $extconvert -eq 1 ]; then
-    #echo convert -quality 100 "$input_file" "$tmpsfile"
-    convert -quality 100 "$input_file" "$tmpsfile" #2>/dev/null 
+  echo convert -quality 100 "$input_file"  +profile \* -profile ~/sRGB2014.icc  "$tmpsfile"
+  convert -quality 100 "$input_file" +profile * -profile ~/sRGB2014.icc  "../$tmpsfile" 2>/dev/null 
 
+  if [ $? -ne 0 ] ; then 
     #conversion fail skip the job
-    if [ $? -ne 0 ] ; then 
-      echo conversion fail skip the job >&2
-      exitapp 1
-    fi  
+    echo conversion fail skip the job >&2
+    exitapp 1
   fi
+
+  cd ..
+  rm -r "${tmpsdir}"
+
+elif [ $extconvert -eq 1 ]; then
+  echo convert -quality 100 "$input_file" "$tmpsfile"
+  convert -quality 100 "$input_file" "$tmpsfile" #2>/dev/null 
+
+  #conversion fail skip the job
+  if [ $? -ne 0 ] ; then 
+    echo conversion fail skip the job >&2
+    exitapp 1
+  fi  
 fi
 
 if [ -f "${tmpsfiles}-0.jpg" ] ; then
@@ -277,10 +286,10 @@ if [ -f "${tmpsfiles}-0.jpg" ] ; then
     fi
 
     echo "$original_file > ${targetfile}"
-    #echo cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
+    echo cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
     cjxl $jxlquality $jxleffort "$input_file" "${targetfile}" 2>/dev/null
 
-    if [ $? -eq 0 ] && [ -f "${targetfile}" ]; then
+    if [ $? -eq 0 ] && [ -s "${targetfile}" ]; then
       #copy exif from source
       if [ $copyexif -eq 1 ]; then 
         exiftool -tagsfromfile "$input_file" -all:all "${targetfile}"
@@ -321,10 +330,10 @@ else
   fi
 
   echo "$original_file > ${targetfile}"
-  #echo cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
+  echo cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
   cjxl $jxlquality $jxleffort "$input_file" "${targetfile}" 2>/dev/null
 
-  if [ $? -eq 0 ] && [ -f "${targetfile}" ]; then
+  if [ $? -eq 0 ] && [ -s "${targetfile}" ]; then
     #copy exif from source
     if [ $copyexif -eq 1 ]; then 
       exiftool -tagsfromfile "$input_file" -all:all "${targetfile}"
@@ -332,6 +341,8 @@ else
     fi
 
     if [ $deletefile -eq 1 ]; then rm "$input_file";fi
+  else
+    rm "${targetfile}" 2>/dev/null
   fi
 fi
 

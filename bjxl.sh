@@ -10,7 +10,7 @@
 
 # Function to parse command line arguments and extract attributes and their values
 deletefile=''
-reqursive=''
+reqursive=0
 copyexif=''
 jxlquality=''
 jxleffort=''
@@ -47,7 +47,7 @@ parse_arguments()
 
       -r)
         #include sub dir
-        reqursive="$1"
+        reqursive=1
         shift
         ;;
 
@@ -97,7 +97,7 @@ dirConvert()
       fi
 
       #echo "$i"
-      #echo "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort
+      echo sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort
       if [ $thread -eq 1 ]; then
         sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort
       else 
