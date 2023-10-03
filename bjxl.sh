@@ -84,26 +84,23 @@ dirConvert()
 {
   echo "$1"
   cd "$1"
+  #pwd
       
   for i in * ; do 
-    if [ -d "${i}" ] && [ $reqursive -eq 1 ] ; then
-      dirConvert "${i}"
-    fi
-
     if [ -f "${i}" ] ; then
       #do not process jxl and temp file
       if [[ "${i}" == *.jxl || "${i}" == *.JXL  || "${i}" == \#__tmps* ]]; then
         continue
       fi
 
-      #echo "$i"
-      echo sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort
       if [ $thread -eq 1 ]; then
         sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort
       else 
         sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort 2>/dev/null & 
         zleep cjxl.sh $thread
       fi
+    elif [ -d "${i}" ] && [ $reqursive -eq 1 ] ; then
+      dirConvert "${i}"
     fi
   done
 
