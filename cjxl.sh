@@ -20,9 +20,9 @@ iccpath=~/sRGB2014.icc
 input_file=""
 output_file=""
 
-#intermediate format that will be be using to convert between source and target if needed
-#any format will do as long it supported by cjxl 
-#png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx
+# intermediate format that will be be using to convert between source and target if needed
+# any format will do as long it supported by cjxl 
+# png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx
 # png is recomended but slow 
 # jpg if you consider convertion speed 
 extBridge=jpg
@@ -51,7 +51,7 @@ parse_arguments()
 
       -exif)
         # copy exif from source file
-        # LR can read JXL exif but exiftool can't , set it to 1 so exiftool can read it too
+        # LR can read JXL exif but exiftool only show a few info , set it to 1 so exiftool can show all exif info
         copyexif=1
         shift
         ;;
@@ -97,13 +97,13 @@ imageinfo()
 {
     showdebug $filepath
     showdebug $original_file
-    showdebug filetype: $filetype
+    showdebug filetype $filetype
     showdebug imagewidth $imagewidth
     showdebug imageheight $imageheight
-    showdebug colorbit=$colorbit
-    showdebug colorspace: $colorspace 
-    showdebug colorprofile: $colorprofile    
-    showdebug errormessage: $errormessage
+    showdebug colorbit $colorbit
+    showdebug colorspace $colorspace 
+    showdebug colorprofile $colorprofile    
+    showdebug errormessage $errormessage
 }
 
 exitapp()
@@ -212,7 +212,7 @@ fext=$(echo "$fext" | tr '[:upper:]' '[:lower:]')
 
 #this ext list base on image supported by imagemagick
 case $fext in
-  3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|icb|ico|icon|iiq|ipl|j2c|j2k|jng|jnx|jp2|jpc|jpe|jpeg|jpg|jpm|jif|jiff|jps|jpt|jxl|k25|kdc|mac|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tif|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
+  3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|icb|ico|icon|iiq|ipl|j2c|j2k|jng|jnx|jp2|jpc|jpe|jpf|jpeg|jpg|jpm|jif|jiff|jps|jpt|jxl|k25|kdc|mac|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tif|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
     supportedfile=1
   ;;
 
@@ -231,13 +231,12 @@ showdebug $output
 
 filetype=$(echo "$output" | grep  -m 1 "Filetype" | cut -d: -f2- | sed 's/^[ \t]*//')
 filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
-
 imagewidth=$(echo "$output" | grep -m 1 "ImageWidth" | cut -d: -f2- | sed 's/^[ \t]*//')
 imageheight=$(echo "$output" | grep -m 1 "ImageHeight" | cut -d: -f2- | sed 's/^[ \t]*//')
-colorbit=$(echo "$output" | grep "ColorBit" | cut -d: -f2- | sed 's/^[ \t]*//')
-colorspace=$(echo "$output" | grep "ColorSpace" | cut -d: -f2- | sed 's/^[ \t]*//' | sed 's/DirectClass //' | tr -d ' ')
-colorprofile=$(echo "$output" | grep "ICC Description" | cut -d: -f2- | sed 's/^[ \t]*//')
-errormessage=$(echo "$output" | grep "identify" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
+colorbit=$(echo "$output" | grep -m 1 "ColorBit" | cut -d: -f2- | sed 's/^[ \t]*//')
+colorspace=$(echo "$output" | grep -m 1 "ColorSpace" | cut -d: -f2- | sed 's/^[ \t]*//' | sed 's/DirectClass //' | tr -d ' ')
+colorprofile=$(echo "$output" | grep -m 1 "ICC Description" | cut -d: -f2- | sed 's/^[ \t]*//')
+errormessage=$(echo "$output" | grep -m 1 "identify" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
 
 if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
   #not an image file, sometime imagemagick return width 1 for recognized file but not an image file  
@@ -257,13 +256,38 @@ fixcolorspace=0
 converttoColorRGB=0
 extconvert=0
 
-if [[ "$errormessage" == "CorruptImageProfile" || "$colorprofile" == "Display P3" || "$colorprofile" == "ProPhoto RGB" || "$colorprofile" == "c2" || "$colorprofile" == "AdobeRGB" || "$colorprofile" == "Adobe RGB (1998)" || "$colorspace" == "Gray"  || "$colorspace" == "CMYK" || "$colorspace" == "CIELab" ]]; then
+if [[ "$errormessage" == "CorruptImageProfile" 
+  || "$colorprofile" == "e-sRGB" 
+  || "$colorspace" == "CMYK" ]] ; then
   fixcolorspace=1
-elif [[ "$colorprofile" == sRGB* || "$colorspace" == sRGB* || "$colorprofile" == "uRGB" || "$colorspace" == "uRGB" ]]; then
-    fixcolorspace=0
-else
-  # need more test for the rest of image type
-  exitapp 1
+
+elif [ -n "$jxlquality" ]; then
+  if [[ "$colorprofile" == "AdobeRGB" 
+    || "$colorprofile" == "Adobe RGB (1998)" 
+    || "$colorprofile" == "Apple RGB" 
+    || "$colorprofile" == "ProPhoto RGB" 
+    || "$colorprofile" == "Generic RGB Profile" 
+    || "$colorprofile" == "Wide Gamut RGB" ]]; then
+    fixcolorspace=1
+  elif [[ "$colorbit" == "16" && "$colorprofile" == "Display P3" ]] || 
+       [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]] || 
+       [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
+    fixcolorspace=1
+  fi
+fi
+
+if [ $fixcolorspace -eq 0 ];then
+  if [[ "$colorprofile" == sRGB* 
+    || "$colorspace" == sRGB* 
+    || "$colorprofile" == "uRGB" 
+    || "$colorspace" == "uRGB" 
+    || "$colorspace" == "Gray" 
+    || "$colorspace" == "CIELab" ]]; then
+      fixcolorspace=0
+  else
+    # need more test for the rest of image type
+    exitapp 1
+  fi  
 fi
 
 case "$fext" in
@@ -272,12 +296,13 @@ case "$fext" in
     extconvert=0
   ;;
 
-  #this ext list base on image supported by darktable
+  # this ext list base on image supported by darktable
   # convert all raw file to bridge file first before converting to JXL
   # at the moment cjxl do not support raw file
   3fr|ari|arw|bay|bmq|cap|cine|cr2|cr3|crw|cs1|dc2|dcr|dng|gpr|erf|fff|exr|ia|iiq|k25|kc2|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|pfm|pxn|qtk|raf|raw|rdc|rw1|rw2|sr2|srf|srw|sti|x3f)
 
     # some raw file have a preview image, so extract that first
+    # so we don't have to wasting time by converting using darktable
     showdebug exiftool -b -JpgFromRaw "$input_file"
     exiftool -b -JpgFromRaw "$input_file" > "$tmpsfile" 2>/dev/null
 
@@ -285,8 +310,9 @@ case "$fext" in
     if [ ! -s "$tmpsfile" ]; then 
        rm "$tmpsfile" 2>/dev/null
     else
-       # check preview image dimension , a few raw store image slightly smaller but some othe only store thumbanail preview 
-       # check it first , if the preview slightly smaller, the diffrence less then 32 pixel just use it
+       # check preview image dimension , a few raw store the image slightly smaller but some other only store thumbanail preview 
+       # check it first , if the preview slightly smaller, the diffrence less then 32 pixel just use it if smaller than that
+       # convert raw file using dark table
        ori_width=$((imagewidth - 32))
        preview_width=$(identify -format "%w" "$tmpsfile")
        
@@ -300,48 +326,53 @@ case "$fext" in
       output=$(exiftool -tagsfromfile "$input_file" -all:all "$tmpsfile")
       showdebug "$output"
     else 
+      # preview not available or to small 
       # convert to bridge file using darktable 
+      # use SRGB so cjxl can convert the file
       showdebug $darktable "$input_file" "$tmpsfile" --icc-type SRGB
       output=$($darktable "$input_file" "$tmpsfile" --icc-type SRGB 2>&1)
       
       # if conversion fail remove bridge file andd exit
       if [ $? -ne 0 ]; then 
         showdebug "$output"
-        echo "${original_file}: conversion fail or file not supported" >&2
+        echo "${original_file}: raw conversion fail or file not supported" >&2
         exitapp 1;
       fi
     fi
 
     if [ -f "$tmpsfile" ]; then
+      # conversion success set converted file to input file
       input_file="$tmpsfile"
     fi
 
-    # because it already converted to bridge file dont need to convert again
+    # because it already converted so dont need to convert again
     fixcolorspace=0
     extconvert=0
   ;;
 
-  # convert all other file type using image magick
-  # file that cjxl can't handle
+  # convert all other file that cjxl can't handle using image magick
   *)
     extconvert=1
   ;;
 esac
 
+# convert file if needed
 if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then 
   mkdir "${tmpsdir}" 2>/dev/null
   cp "$input_file" "${tmpsdir}"
   cd "${tmpsdir}"
 
   # convert all image that cjxl can't handle to bridge file 
-  # fix broken corrupt image color space or color space other than RGB
+  # fix broken corrupt image color space or color profile other than RGB
   common_args="-quality 100"
 
   if [ $fixcolorspace -eq 1 ] ; then 
     if [ "$colorspace" == "CMYK" ]; then
       specific_args="+profile * -profile $iccpath"
-    elif [ "$colorspace" == "Gray" ]; then
+    elif [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]]; then
       specific_args="-colorspace sRGB -type truecolor"
+    elif [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
+      specific_args="-colorspace Gray -type Grayscale"
     else
       specific_args="-colorspace sRGB -type truecolor  +profile \* -profile $iccpath"
     fi
