@@ -16,8 +16,16 @@ copyexif=0
 jxlquality=''
 jxleffort='-e 7'
 darktable=/Applications/darktable.app/Contents/MacOS/darktable-cli
+iccpath=~/sRGB2014.icc
 input_file=""
 output_file=""
+
+#intermediate format that will be be using to convert between source and target if needed
+#any format will do as long it supported by cjxl 
+#png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx
+# png is recomended but slow 
+# jpg if you consider convertion speed 
+extBridge=jpg
 
 parse_arguments() 
 {
@@ -81,7 +89,7 @@ parse_arguments()
 
 showdebug() {
   if [ $showdebug -eq 1 ]; then
-    echo "Debug Info: $*"
+    echo "#: $*"
   fi
 }
 
@@ -95,27 +103,40 @@ imageinfo()
     showdebug colorbit=$colorbit
     showdebug colorspace: $colorspace 
     showdebug colorprofile: $colorprofile    
+    showdebug errormessage: $errormessage
 }
+
 exitapp()
 {
   imageinfo
 
-  #cleanup all temp before exiting
-  showdebug delete all temp
 
   if [ -n "$fname" ] && [ $showdebug -eq 0 ]; then 
-    rm "$tmpsfiles"* 2>/dev/null
-    rm -r "${tmpsdir}" 2>/dev/null
+    #cleanup all temp before exiting
+    showdebug delete all temp
+
+    output=$(rm "$tmpsfiles"* 2>&1)
+    showdebug "$output" 
+
+    output=$(rm -r "${tmpsdir}" 2>&1)
+    showdebug "$output" 
   fi    
   
   if [ $deletefile -eq 1 ] && [ $1 -eq 0 ]; then
     #remove original file if conversion success 
-    showdebug delete orriginal file \"$original_file\"
-    rm "$original_file" 2>/dev/null
+    showdebug "delete original file \"${original_file}\""
+    output=$(rm -- "$original_file" 2>&1)
+    showdebug "$output" 
   fi
 
-  if [ $1 -ne 0 ]; then
-    echo "Conversion Fail"
+  if [ $1 -eq 0 ]; then
+    showdebug "Conversion Success"
+  else
+    echo "${original_file}:Conversion Fail"
+    echo "${targetfile}"
+    if [ ! -s "$targetfile" ]; then 
+      rm "${targetfile}" 2>/dev/null
+    fi  
   fi
 
   exit $1
@@ -139,9 +160,15 @@ createuniquename()
   fi 
 
   # reserve file 
-  touch "$targetfile"
+  output=$(touch "$targetfile" 2>&1)
+  if [ $? -ne 0 ]; then
+    showdebug "$output"
+    echo "${original_file}: failed to reserve file" >&2
+    exit 1
+  fi
 
   echo "$targetfile"
+  exit 0
 }
 
 
@@ -159,41 +186,49 @@ fi;
 
 filepath=$(pwd)
 original_file="$input_file"
-filename=$(basename "$input_file")
-inputdir=$(dirname "$input_file")
+filename=$(basename -- "$input_file")
+inputdir=$(dirname -- "$input_file")
 fname="${filename%.*}"
 fext="${filename##*.}"
 
 if [ -n "$output_file" ]; then
-  outputdir=$(dirname "$output_file")  
-  output_file=$(basename "$output_file")  
+  outputdir=$(dirname -- "$output_file")  
+  output_file=$(basename -- "$output_file")  
 else
   output_file="${fname}.jxl"
   outputdir="$inputdir"
 fi
 
+hidden_file='.'
+if [ $showdebug -eq 1 ];then 
+  hidden_file=""
+fi
 
-tmpsfiles="#__tmps__${fname}${fext}__"
-tmpsfile="#__tmps__${fname}${fext}__.jpg"
-tmpsdir="__tmps__${fname}${fext}__"
+tmpsfiles="${hidden_file}__tmps__${fname}${fext}__"
+tmpsfile="${hidden_file}__tmps__${fname}${fext}__.${extBridge}"
+tmpsdir="${hidden_file}__tmps__${fname}${fext}__"
 
 fext=$(echo "$fext" | tr '[:upper:]' '[:lower:]')
 
 #this ext list base on image supported by imagemagick
 case $fext in
-  3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|htm|html|http|https|icb|ico|icon|iiq|ipl|j2c|j2k|jng|jnx|jp2|jpc|jpe|jpeg|jpg|jpm|jps|jpt|jxl|k25|kdc|mac|map|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
+  3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|htm|html|http|https|icb|ico|icon|iiq|ipl|j2c|j2k|jng|jnx|jp2|jpc|jpe|jpeg|jpg|jpm|jif|jiff|jps|jpt|jxl|k25|kdc|mac|map|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tif|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
     supportedfile=1
   ;;
 
   *)
-    echo "unsupported file" >&2
+    echo "${original_file}: unsupported file" >&2
     exit 1;
   ;;
 esac
 
 # Run the identify command with structured output and capture it
+# this is needed because we want to know what we have to do before convert the image to JXL
+# llike colorspace RGB,CMYK,Grey, broken color profile, it make strange color when convert 
+# and might be some file is not an image file 
 output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\n" "$input_file" 2>&1)
-# secho $output
+showdebug $output
+
 filetype=$(echo "$output" | grep  -m 1 "Filetype" | cut -d: -f2- | sed 's/^[ \t]*//')
 filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
 
@@ -206,14 +241,14 @@ errormessage=$(echo "$output" | grep "identify" | cut -d: -f2- | sed -e 's/^[ \t
 
 if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
   #not an image file, sometime imagemagick return width 1 for recognized file but not an image file  
-  echo "file unrecognized or not an image file" >&2
+  echo "${original_file}:file unrecognized or not an image file" >&2
   exitapp 1;
 fi 
 
-# just in case there's video disguise as image
+# just in case there's video disguise as image, there's more but this the common one
 case $filetype in
-  "mp4" | "mkv" | "mov" | "mp5" | "hevc" )
-    echo "unsupported file" >&2
+  "mp4" | "mkv" | "mov" | "mpg" | "hevc" | "mpeg")
+    echo "${original_file}: unsupported file" >&2
     exitapp 1;
     ;;
 esac
@@ -222,11 +257,12 @@ fixcolorspace=0
 converttoColorRGB=0
 extconvert=0
 
-if [[ "$errormessage" == "CorruptImageProfile" || "$colorprofile" == "Display P3" || "$colorprofile" == "ProPhoto RGB" || "$colorprofile" == "c2" || "$colorprofile" == "AdobeRGB" || "$colorprofile" == "Adobe RGB (1998)" || "$colorspace" == "Gray"  || "$colorspace" == "CMYK" ]]; then
+if [[ "$errormessage" == "CorruptImageProfile" || "$colorprofile" == "Display P3" || "$colorprofile" == "ProPhoto RGB" || "$colorprofile" == "c2" || "$colorprofile" == "AdobeRGB" || "$colorprofile" == "Adobe RGB (1998)" || "$colorspace" == "Gray"  || "$colorspace" == "CMYK" || "$colorspace" == "CIELab" ]]; then
   fixcolorspace=1
 elif [[ "$colorprofile" == sRGB* || "$colorspace" == sRGB* || "$colorprofile" == "uRGB" || "$colorspace" == "uRGB" ]]; then
     fixcolorspace=0
 else
+  # need more test for the rest of image type
   exitapp 1
 fi
 
@@ -237,17 +273,20 @@ case "$fext" in
   ;;
 
   #this ext list base on image supported by darktable
+  # convert all raw file to bridge file first before converting to JXL
+  # at the moment cjxl do not support raw file
   3fr|ari|arw|bay|bmq|cap|cine|cr2|cr3|crw|cs1|dc2|dcr|dng|gpr|erf|fff|exr|ia|iiq|k25|kc2|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|pfm|pxn|qtk|raf|raw|rdc|rw1|rw2|sr2|srf|srw|sti|x3f)
 
-    #extract jpeg preview if available
-    echo exiftool -b -JpgFromRaw "$input_file"
+    # some raw file have a preview image, so extract that first
+    showdebug exiftool -b -JpgFromRaw "$input_file"
     exiftool -b -JpgFromRaw "$input_file" > "$tmpsfile" 2>/dev/null
 
-    #if file size 0 raw don't have preview
+    # check the preview file size, if it's zero, run darktable to convert from RAW
     if [ ! -s "$tmpsfile" ]; then 
-       rm "$tmpsfile"
+       rm "$tmpsfile" 2>/dev/null
     else
-      #check preview size, sometime the image is slightly smaller but not much, if the diffrence less then 32 pixel just use it, but sometime it only a thumbnail 
+       # check preview image dimension , a few raw store image slightly smaller but some othe only store thumbanail preview 
+       # check it first , if the preview slightly smaller, the diffrence less then 32 pixel just use it
        ori_width=$((imagewidth - 32))
        preview_width=$(identify -format "%w" "$tmpsfile")
        
@@ -257,16 +296,18 @@ case "$fext" in
     fi
 
     if [ -f "$tmpsfile" ]; then
-      #most of preview do not include exif, copy exif from raw
-      exiftool -tagsfromfile "$input_file" -all:all "$tmpsfile" >/dev/null 2>/dev/null
+      # most of preview do not include exif data, copy the exif from raw file
+      output=$(exiftool -tagsfromfile "$input_file" -all:all "$tmpsfile")
+      showdebug "$output"
     else 
-      #convert to jpg using darktable 
-      echo $darktable "$input_file" "$tmpsfile" --icc-type SRGB
-      $darktable "$input_file" "$tmpsfile" --icc-type SRGB  >/dev/null 2>/dev/null
-
-      #if conversion fail remove temp file
+      # convert to bridge file using darktable 
+      showdebug $darktable "$input_file" "$tmpsfile" --icc-type SRGB
+      output=$($darktable "$input_file" "$tmpsfile" --icc-type SRGB 2>&1)
+      
+      # if conversion fail remove bridge file andd exit
       if [ $? -ne 0 ]; then 
-        echo "conversion fail or file not supported" >&2
+        showdebug "$output"
+        echo "${original_file}: conversion fail or file not supported" >&2
         exitapp 1;
       fi
     fi
@@ -275,64 +316,61 @@ case "$fext" in
       input_file="$tmpsfile"
     fi
 
-    # already converted 
+    # because it already converted to bridge file dont need to convert again
     fixcolorspace=0
     extconvert=0
   ;;
 
-  # convert all other file let imagemagick do the rest
+  # convert all other file type using image magick
+  # file that cjxl can't handle
   *)
     extconvert=1
   ;;
 esac
 
-# fix broken corrupt image color space or color space other than RGB
-if [ $fixcolorspace -eq 1 ] ; then 
-  mkdir "${tmpsdir}"
+if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then 
+  mkdir "${tmpsdir}" 2>/dev/null
   cp "$input_file" "${tmpsdir}"
   cd "${tmpsdir}"
 
-  if [ "$colorspace" == "CMYK" ]; then
-    #showdebug convert -quality 100 "$input_file" -colorspace RGB  "../$tmpsfile" 2>/dev/null 
-    #convert -quality 100 "$input_file" -colorspace RGB  "../$tmpsfile" 2>/dev/null 
+  # convert all image that cjxl can't handle to bridge file 
+  # fix broken corrupt image color space or color space other than RGB
+  common_args="-quality 100"
 
-    showdebug convert -quality 100 "$input_file" +profile \* -profile ~/sRGB2014.icc  "$tmpsfile"
-    convert -quality 100 "$input_file" +profile * -profile ~/sRGB2014.icc  "../$tmpsfile" 2>/dev/null 
-  elif [ "$colorspace" == "Gray" ]; then
-    showdebug convert -quality 100 "$input_file" -colorspace sRGB -type truecolor "$tmpsfile"
-    convert -quality 100 "$input_file" -colorspace sRGB -type truecolor "../$tmpsfile" 2>/dev/null 
+  if [ $fixcolorspace -eq 1 ] ; then 
+    if [ "$colorspace" == "CMYK" ]; then
+      specific_args="+profile * -profile $iccpath"
+    elif [ "$colorspace" == "Gray" ]; then
+      specific_args="-colorspace sRGB -type truecolor"
+    else
+      specific_args="-colorspace sRGB -type truecolor  +profile \* -profile $iccpath"
+    fi
   else
-    showdebug convert -quality 100 "$input_file"   -colorspace sRGB -type truecolor  +profile \* -profile ~/sRGB2014.icc  "$tmpsfile"
-    convert -quality 100 "$input_file"  -colorspace sRGB -type truecolor  +profile * -profile ~/sRGB2014.icc  "../$tmpsfile" 2>/dev/null 
+    specific_args="" 
   fi
 
+  showdebug convert "$input_file" $common_args $specific_args "$tmpsfile"
+  output=$(convert "$input_file" $common_args $specific_args "../${tmpsfile}" 2>&1)
+
   if [ $? -ne 0 ] ; then 
-    #conversion fail skip the job
+    showdebug "$output"
     echo conversion fail skip the job >&2
     exitapp 1
   fi
 
   cd ..
-  rm -r "${tmpsdir}"
-
-elif [ $extconvert -eq 1 ]; then
-  showdebug convert -quality 100 "$input_file" "$tmpsfile"
-  convert -quality 100 "$input_file" "$tmpsfile" #2>/dev/null 
-
-  #conversion fail skip the job
-  if [ $? -ne 0 ] ; then 
-    echo conversion fail skip the job >&2
-    exitapp 1
-  fi  
 fi
 
-if [ -f "${tmpsfiles}-0.jpg" ] ; then
-
+if [ -f "${tmpsfiles}-0.${extBridge}" ] ; then
   baseoutputname="$output_file"
   if [ $rewritefile -eq 0 ]; then
     fnameout="${baseoutputname%.*}"
     fextout="${baseoutputname##*.}"
     baseoutputname=$(createuniquename "$outputdir" "$fnameout" "$fextout")
+    if [ $? -ne 0 ];then
+      echo fail to reserve file >&2
+      exitapp 1
+    fi
     baseoutputname=$(basename "$baseoutputname")
   fi
 
@@ -341,22 +379,26 @@ if [ -f "${tmpsfiles}-0.jpg" ] ; then
   for i in "${tmpsfiles}"-* ; do 
     input_file="$i"
 
-    if [ "$i" == "${tmpsfiles}-0.jpg" ]; then
+    if [ "$i" == "${tmpsfiles}-0.${extBridge}" ]; then
       targetfile="${outputdir}/$baseoutputname"
     else
       fnameout="${baseoutputname%.*}"
       fextout="${baseoutputname##*.}"
-      outputname=$(echo "$i" | sed "s/$tmpsfiles/$fnameout/" | sed 's/.jpg//')
+      outputname=$(echo "$i" | sed "s/$tmpsfiles/$fnameout/" | sed "s/.${extBridge}//")
       targetfile="${outputdir}/${outputname}.${fextout}"
       if [ $rewritefile -eq 0 ]; then
         targetfile=$(createuniquename "$outputdir" "$outputname" "$fextout")
+        if [ $? -ne 0 ];then
+          echo fail to reserve file >&2
+          exitapp 1
+        fi
       fi
     fi
 
-    echo "$original_file > ${targetfile}"
+    echo "${filepath}/$original_file > ${targetfile}"
     showdebug cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
-    cjxl $jxlquality $jxleffort "$input_file" "${targetfile}" 2>/dev/null
-
+    output=$(cjxl $jxlquality $jxleffort -- "$input_file" "${targetfile}" 2>&1)
+    
     if [ $? -eq 0 ] && [ -s "${targetfile}" ]; then
       #copy exif from source
       if [ $copyexif -eq 1 ]; then 
@@ -364,7 +406,7 @@ if [ -f "${tmpsfiles}-0.jpg" ] ; then
         rm "${targetfile}_original" 2>/dev/null
       fi
     else
-      rm "${targetfile}" 2>/dev/null
+      showdebug "$output"
       errorexist=1
       #
     fi
@@ -382,11 +424,15 @@ else
     fnameout="${output_file%.*}"
     fextout="${output_file##*.}"
     targetfile=$(createuniquename "$outputdir" "$fnameout" "$fextout")
+        if [ $? -ne 0 ];then
+          echo fail to reserve file >&2
+          exitapp 1
+        fi
   fi
 
-  echo "$original_file > ${targetfile}"
+  echo "${filepath}/$original_file > ${targetfile}"
   showdebug cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
-  cjxl $jxlquality $jxleffort "$input_file" "${targetfile}" 2>/dev/null
+  output=$(cjxl $jxlquality $jxleffort -- "$input_file" "${targetfile}" 2>&1)  
 
   if [ $? -eq 0 ] && [ -s "${targetfile}" ]; then
     #copy exif from source
@@ -396,9 +442,7 @@ else
     fi
     exitapp 0
   else
-    rm "${targetfile}" 2>/dev/null
+    showdebug "$output"
     exitapp 1
   fi
 fi
-
-

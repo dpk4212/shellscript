@@ -18,6 +18,7 @@ bjxlpath="$0"
 basedir=$(dirname "$bjxlpath")  
 cjxlpath="${basedir}/cjxl.sh"
 thread=1
+iccpath=
 
 if [ ! -f "$cjxlpath" ]; then
   echo $cjxlpath
@@ -89,13 +90,15 @@ dirConvert()
   for i in * ; do 
     if [ -f "${i}" ] ; then
       #do not process jxl and temp file
-      if [[ "${i}" == *.jxl || "${i}" == *.JXL  || "${i}" == \#__tmps* ]]; then
+      if [[ "${i}" == *.jxl || "${i}" == *.JXL  || "${i}" == .__tmps__* || "${i}" == __tmps__* ]]; then
         continue
       fi
 
       if [ $thread -eq 1 ]; then
+        echo $i
         sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort
       else 
+        echo $i
         sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort 2>/dev/null & 
         zleep cjxl.sh $thread
       fi
