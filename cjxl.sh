@@ -226,7 +226,7 @@ esac
 # this is needed because we want to know what we have to do before convert the image to JXL
 # llike colorspace RGB,CMYK,Grey, broken color profile, it make strange color when convert 
 # and might be some file is not an image file 
-output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\n" "$input_file" 2>&1)
+output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\nScene: %[scene]\n" "$input_file" 2>&1)
 showdebug $output
 
 filetype=$(echo "$output" | grep  -m 1 "Filetype" | cut -d: -f2- | sed 's/^[ \t]*//')
@@ -237,6 +237,19 @@ colorbit=$(echo "$output" | grep -m 1 "ColorBit" | cut -d: -f2- | sed 's/^[ \t]*
 colorspace=$(echo "$output" | grep -m 1 "ColorSpace" | cut -d: -f2- | sed 's/^[ \t]*//' | sed 's/DirectClass //' | tr -d ' ')
 colorprofile=$(echo "$output" | grep -m 1 "ICC Description" | cut -d: -f2- | sed 's/^[ \t]*//')
 errormessage=$(echo "$output" | grep -m 1 "identify" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
+imagescene=$(echo "$output" | grep  "Scene" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
+numberofscene=0
+
+if [ -n "$imagescene" ]; then
+  imagescenes=($imagescene)  # Split the string into an array
+
+  # Get the last number (assuming the string is space-separated)
+  last_index=$(( ${#imagescenes[@]} - 1 ))
+  numberofscene="${imagescenes[last_index]}"
+  numberofscene=$(( $numberofscene + 1 ))
+
+  showdebug imagescene $numberofscene
+fi
 
 if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
   #not an image file, sometime imagemagick return width 1 for recognized file but not an image file  
@@ -256,6 +269,12 @@ fixcolorspace=0
 converttoColorRGB=0
 extconvert=0
 
+
+if [[ "$filetype" == "gif" && $numberofscene -gt 1 ]]; then
+    echo "${original_file}: unsupported file" >&2
+    exitapp 1;
+fi
+
 if [[ "$errormessage" == "CorruptImageProfile" 
   || "$colorprofile" == "e-sRGB" 
   || "$colorspace" == "CMYK" ]] ; then
@@ -271,6 +290,7 @@ elif [ -n "$jxlquality" ]; then
     fixcolorspace=1
   elif [[ "$colorbit" == "16" && "$colorprofile" == "Display P3" ]] || 
        [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]] || 
+       [[ "$colorspace" == "sRGB" && "$colorprofile" == Dot\ Gain* ]] ||
        [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
     fixcolorspace=1
   fi
@@ -290,7 +310,7 @@ if [ $fixcolorspace -eq 0 ];then
   fi  
 fi
 
-case "$fext" in
+case "$filetype" in
   #this ext list base on image supported by cjxl
   png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx)
     extconvert=0
@@ -368,9 +388,15 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
 
   if [ $fixcolorspace -eq 1 ] ; then 
     if [ "$colorspace" == "CMYK" ]; then
-      specific_args="+profile * -profile $iccpath"
+      if [[ "$colorprofile" ==  "" || "$colorprofile" ==  sRGB* ]]; then
+        specific_args="-colorspace sRGB -type truecolor"
+      else
+        specific_args="+profile \* -profile $iccpath"
+      fi
     elif [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]]; then
       specific_args="-colorspace sRGB -type truecolor"
+    elif [[ "$colorspace" == "sRGB" && "$colorprofile" == Dot\ Gain* ]]; then
+      specific_args="-colorspace Gray -type Grayscale"
     elif [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
       specific_args="-colorspace Gray -type Grayscale"
     else
