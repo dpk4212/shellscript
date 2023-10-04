@@ -32,19 +32,19 @@ parse_arguments()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -del)
-        #delete source fie 
+        #delete source fie if convert success
         deletefile=1
         shift
         ;;
 
       -y)
-        #delete source fie 
+        #force rewrite output file
         rewritefile=1
         shift
         ;;
 
       -debug)
-        #delete source fie 
+        # just for debugging purpose 
         showdebug=1
         shift
         ;;
@@ -57,7 +57,7 @@ parse_arguments()
         ;;
 
       -q=*)
-        # Handle attributes with values
+        # JXL output quality
         quality=$(echo "$1"|cut -d= -f2-)
         if [ $quality -gt 0 ] && [ $quality -lt 100 ]; then
           jxlquality=" --lossless_jpeg=0 -q $quality "
@@ -66,7 +66,7 @@ parse_arguments()
         ;;
 
       -e=*)
-        # Handle attributes with values
+        # conversion effort 
         effort=$(echo "$1"|cut -d= -f2-)
         if [ $effort -ge 0 ] && [ $effort -le 9 ]; then
           jxleffort="-e $effort"
