@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# just a script to convert all image to jxl
+# just a script to convert all images to jxl
 # require imagemagick, darktable, exiftool
 # available parameter
-# -r recursive , include all sub directories
+# -r recursive, include all subdirectories
 # -del delete source file 
 # -q=xx 1-100 image quality the higher is better large file size
-# -e=x 1-9 Convertion effort higher is slower
+# -e=x 1-9 Conversion effort higher is slower
 
 # Function to parse command line arguments and extract attributes and their values
 showdebug=0
@@ -20,11 +20,11 @@ iccpath=~/sRGB2014.icc
 input_file=""
 output_file=""
 
-# intermediate format that will be be using to convert between source and target if needed
-# any format will do as long it supported by cjxl 
+# intermediate format that will be used to convert between source and target if needed
+# Any format will do as long it supported by cjxl 
 # png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx
-# png is recomended but slow 
-# jpg if you consider convertion speed 
+# png is recommended but slow 
+# jpg if you consider conversion speed 
 extBridge=jpg
 
 parse_arguments() 
@@ -32,7 +32,7 @@ parse_arguments()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -del)
-        #delete source fie if convert success
+        #delete source file if convert success
         deletefile=1
         shift
         ;;
@@ -44,14 +44,14 @@ parse_arguments()
         ;;
 
       -debug)
-        # just for debugging purpose 
+        # just for debugging purposes 
         showdebug=1
         shift
         ;;
 
       -exif)
         # copy exif from source file
-        # LR can read JXL exif but exiftool only show a few info , set it to 1 so exiftool can show all exif info
+        # LR can read JXL exif but exiftool only show a little info , set it to 1 so exiftool can show all EXIF info
         copyexif=1
         shift
         ;;
@@ -210,7 +210,7 @@ tmpsdir="${hidden_file}__tmps__${fname}${fext}__"
 
 fext=$(echo "$fext" | tr '[:upper:]' '[:lower:]')
 
-#this ext list base on image supported by imagemagick
+#this ext list based on images supported by imagemagick
 case $fext in
   3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|icb|ico|icon|iiq|ipl|j2c|j2k|jng|jnx|jp2|jpc|jpe|jpf|jpeg|jpg|jpm|jif|jiff|jps|jpt|jxl|k25|kdc|mac|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tif|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
     supportedfile=1
@@ -223,8 +223,8 @@ case $fext in
 esac
 
 # Run the identify command with structured output and capture it
-# this is needed because we want to know what we have to do before convert the image to JXL
-# llike colorspace RGB,CMYK,Grey, broken color profile, it make strange color when convert 
+# This is needed because we want to know what we have to do before converting the image to JXL
+# llike colorspace RGB,CMYK,Grey, broken color profile, it makes strange color when converting 
 # and might be some file is not an image file 
 output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\nScene: %[scene]\n" "$input_file" 2>&1)
 showdebug $output
@@ -252,12 +252,12 @@ if [ -n "$imagescene" ]; then
 fi
 
 if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
-  #not an image file, sometime imagemagick return width 1 for recognized file but not an image file  
+  #not an image file, ImageMagick return width 1 for recognized file but not an image file  
   echo "${original_file}:file unrecognized or not an image file" >&2
   exitapp 1;
 fi 
 
-# just in case there's video disguise as image, there's more but this the common one
+# just in case there's a video disguised as image, there's more but this is the common one
 case $filetype in
   "mp4" | "mkv" | "mov" | "mpg" | "hevc" | "mpeg")
     echo "${original_file}: unsupported file" >&2
@@ -305,24 +305,24 @@ if [ $fixcolorspace -eq 0 ];then
     || "$colorspace" == "CIELab" ]]; then
       fixcolorspace=0
   else
-    # need more test for the rest of image type
+    # need more tests for the rest of the image type
     exitapp 1
   fi  
 fi
 
 case "$filetype" in
-  #this ext list base on image supported by cjxl
+  #this ext list based on image supported by cjxl
   png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx)
     extconvert=0
   ;;
 
-  # this ext list base on image supported by darktable
-  # convert all raw file to bridge file first before converting to JXL
-  # at the moment cjxl do not support raw file
+  # This ext list based on image supported by darktable
+  # convert all raw files to bridge files first before converting to JXL
+  # At the moment cjxl does not support raw file
   3fr|ari|arw|bay|bmq|cap|cine|cr2|cr3|crw|cs1|dc2|dcr|dng|gpr|erf|fff|exr|ia|iiq|k25|kc2|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|pfm|pxn|qtk|raf|raw|rdc|rw1|rw2|sr2|srf|srw|sti|x3f)
 
-    # some raw file have a preview image, so extract that first
-    # so we don't have to wasting time by converting using darktable
+    # Some raw file have a preview image, so extract that first
+    # so we don't have to waste time by converting using darktable
     showdebug exiftool -b -JpgFromRaw "$input_file"
     exiftool -b -JpgFromRaw "$input_file" > "$tmpsfile" 2>/dev/null
 
@@ -330,8 +330,8 @@ case "$filetype" in
     if [ ! -s "$tmpsfile" ]; then 
        rm "$tmpsfile" 2>/dev/null
     else
-       # check preview image dimension , a few raw store the image slightly smaller but some other only store thumbanail preview 
-       # check it first , if the preview slightly smaller, the diffrence less then 32 pixel just use it if smaller than that
+       # check preview image dimension, a few raw store the image slightly smaller but some others only store thumbnail preview 
+       # check it first, if the preview is slightly smaller, the difference less then 32 pixels just use it if smaller than that
        # convert raw file using dark table
        ori_width=$((imagewidth - 32))
        preview_width=$(identify -format "%w" "$tmpsfile")
@@ -352,7 +352,7 @@ case "$filetype" in
       showdebug $darktable "$input_file" "$tmpsfile" --icc-type SRGB
       output=$($darktable "$input_file" "$tmpsfile" --icc-type SRGB 2>&1)
       
-      # if conversion fail remove bridge file andd exit
+      # if conversion fails remove bridge file and exit
       if [ $? -ne 0 ]; then 
         showdebug "$output"
         echo "${original_file}: raw conversion fail or file not supported" >&2
@@ -361,16 +361,16 @@ case "$filetype" in
     fi
 
     if [ -f "$tmpsfile" ]; then
-      # conversion success set converted file to input file
+      # Conversion success set converted file to input file
       input_file="$tmpsfile"
     fi
 
-    # because it already converted so dont need to convert again
+    # because it already converted so don't need to convert again
     fixcolorspace=0
     extconvert=0
   ;;
 
-  # convert all other file that cjxl can't handle using image magick
+  # convert all other files that cjxl can't handle using image magick
   *)
     extconvert=1
   ;;
