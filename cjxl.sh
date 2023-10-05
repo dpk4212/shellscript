@@ -9,6 +9,7 @@
 # -e=x 1-9 Conversion effort higher is slower
 
 # Function to parse command line arguments and extract attributes and their values
+sdfiles=0
 showdebug=0
 deletefile=0
 rewritefile=0
@@ -51,8 +52,16 @@ parse_arguments()
 
       -exif)
         # copy exif from source file
-        # LR can read JXL exif but exiftool only show a little info , set it to 1 so exiftool can show all EXIF info
+        # Digikam cant show exiftool but LR can show minimal exif data
+        # set it to 1 so exiftool can show all EXIF info        
         copyexif=1
+        shift
+        ;;
+
+      -ai)
+        # image from stable diffusion store prompt and other parameter on property or user comment 
+        # keep these data on exported file
+        sdfiles=1
         shift
         ;;
 
@@ -171,7 +180,6 @@ createuniquename()
   exit 0
 }
 
-
 parse_arguments "$@"
 
 if [ ! -f "$input_file" ] ; then 
@@ -227,7 +235,6 @@ esac
 # llike colorspace RGB,CMYK,Grey, broken color profile, it makes strange color when converting 
 # and might be some file is not an image file 
 output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\nScene: %[scene]\n" "$input_file" 2>&1)
-showdebug $output
 
 filetype=$(echo "$output" | grep  -m 1 "Filetype" | cut -d: -f2- | sed 's/^[ \t]*//')
 filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
@@ -238,17 +245,25 @@ colorspace=$(echo "$output" | grep -m 1 "ColorSpace" | cut -d: -f2- | sed 's/^[ 
 colorprofile=$(echo "$output" | grep -m 1 "ICC Description" | cut -d: -f2- | sed 's/^[ \t]*//')
 errormessage=$(echo "$output" | grep -m 1 "identify" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
 imagescene=$(echo "$output" | grep  "Scene" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
+ExifUserComment=$(exiftool -UserComment "$input_file" | cut -d: -f2-)
 numberofscene=0
+sdparameter=''
+
+if  [[ $sdfiles -eq 1 ]] && [[ "$filetype" == "jpg" || "$filetype" == "jpeg" || "$filetype" == "png" ]]; then
+  sdparameter=$(exiftool -Parameters -UserComment "$input_file" 2>/dev/null | cut -d: -f2-)
+  
+  # if parameter not exist treat as regular file
+  if [[ ! -n "$sdparameter" ]]; then
+    sdfiles=0
+  fi
+fi
 
 if [ -n "$imagescene" ]; then
-  imagescenes=($imagescene)  # Split the string into an array
+  imagescenes=($imagescene)
 
-  # Get the last number (assuming the string is space-separated)
   last_index=$(( ${#imagescenes[@]} - 1 ))
   numberofscene="${imagescenes[last_index]}"
   numberofscene=$(( $numberofscene + 1 ))
-
-  showdebug imagescene $numberofscene
 fi
 
 if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
@@ -271,6 +286,7 @@ extconvert=0
 
 
 if [[ "$filetype" == "gif" && $numberofscene -gt 1 ]]; then
+    # need more test for this file 
     echo "${original_file}: unsupported file" >&2
     exitapp 1;
 fi
@@ -314,6 +330,12 @@ case "$filetype" in
   #this ext list based on image supported by cjxl
   png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx)
     extconvert=0
+    if [[ $sdfiles -eq 1 && "$filetype" == 'png' ]]; then
+      # when i'm playing around with exif if source file from png always raise an error
+      # so convert to jpg first
+      extconvert=1
+      extBridge='jpg'
+    fi
   ;;
 
   # This ext list based on image supported by darktable
@@ -416,6 +438,24 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
   fi
 
   cd ..
+  if [[ $sdfiles -eq 1 ]]; then
+    showdebug set exif to $tmpsfile
+    if [[ $numberofscene -gt 1 ]]; then
+      for (( i = 0; i < $numberofscene; i++ )); do
+        if [ -f "${tmpsfiles}-${i}.${extBridge}" ]; then
+          showdebug write exif to "${tmpsfiles}-${i}.${extBridge}"
+          exiftool  -UserComment="$sdparameter" "${tmpsfiles}-${i}.${extBridge}" >/dev/null 2>/dev/null
+          showdebug exiftool  -UserComment="$sdparameter" "${tmpsfiles}-${i}.${extBridge}"
+        fi
+      done
+    else
+      if [ -f "$tmpsfile" ]; then
+        showdebug write exif to "$tmpsfile"
+        exiftool  -UserComment="$sdparameter" "$tmpsfile" >/dev/null 2>/dev/null
+        showdebug exiftool  -UserComment="$sdparameter" "$tmpsfile"
+      fi
+    fi
+  fi
 fi
 
 if [ -f "${tmpsfiles}-0.${extBridge}" ] ; then
@@ -489,13 +529,34 @@ else
 
   echo "${filepath}/$original_file > ${targetfile}"
   showdebug cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
+
   output=$(cjxl $jxlquality $jxleffort -- "$input_file" "${targetfile}" 2>&1)  
 
   if [ $? -eq 0 ] && [ -s "${targetfile}" ]; then
     #copy exif from source
-    if [ $copyexif -eq 1 ]; then 
-      exiftool -tagsfromfile "$input_file" -all:all "${targetfile}"
-      rm "${targetfile}_original" 2>/dev/null
+    if [ $sdfiles -eq 1 ]; then
+      showdebug exiftool  -UserComment="$sdparameter" "${targetfile}"
+      output=$(exiftool  -UserComment="$sdparameter" "${targetfile}" 2>&1)
+
+      # Check if the output contains the success message
+      if echo "$output" | grep -q "1 image files updated"; then
+          rm "${targetfile}_original" 2>/dev/null  
+      else
+        echo "Fail to write parameter" >&2
+        showdebug "Fail to write parameter"
+        showdebug $output
+      fi
+
+    elif [ $copyexif -eq 1 ]; then 
+      output=$(exiftool -tagsfromfile "$original_file" -all:all "${targetfile}" 2>&1)
+      # Check if the output contains the success message
+      if echo "$output" | grep -q "1 image files updated"; then
+          rm "${targetfile}_original" 2>/dev/null  
+      else
+        echo "Fail to copy exif from from ${original_file}" >&2
+        showdebug "Fail to copy exif from from ${input_file}"
+        showdebug $output
+      fi
     fi
     exitapp 0
   else
