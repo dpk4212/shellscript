@@ -89,7 +89,6 @@ fileconvert()
       fi
 
       if [ $thread -eq 1 ]; then
-        echo sh "$cjxlpath" "$i" $param
         sh "$cjxlpath" "$i" $param
       else 
         sh "$cjxlpath" "$i" $param 2>/dev/null & 
