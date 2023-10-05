@@ -14,6 +14,7 @@ showdebug=0
 deletefile=0
 rewritefile=0
 copyexif=0
+singlefile=0
 jxlquality=''
 jxleffort='-e 7'
 darktable=/Applications/darktable.app/Contents/MacOS/darktable-cli
@@ -55,6 +56,12 @@ parse_arguments()
         # Digikam cant show exiftool but LR can show minimal exif data
         # set it to 1 so exiftool can show all EXIF info        
         copyexif=1
+        shift
+        ;;
+
+      -single)
+        # only convert first image on multi image file such as PDF or inther format
+        singlefile=1
         shift
         ;;
 
@@ -111,15 +118,13 @@ imageinfo()
     showdebug imageheight $imageheight
     showdebug colorbit $colorbit
     showdebug colorspace $colorspace 
-    showdebug colorprofile $colorprofile    
+    showdebug colorprofile $colorprofile
+    showdebug numberofscene $numberofscene    
     showdebug errormessage $errormessage
 }
 
 exitapp()
 {
-  imageinfo
-
-
   if [ -n "$fname" ] && [ $showdebug -eq 0 ]; then 
     #cleanup all temp before exiting
     showdebug delete all temp
@@ -138,6 +143,8 @@ exitapp()
     showdebug "$output" 
   fi
 
+  imageinfo
+
   if [ $1 -eq 0 ]; then
     showdebug "Conversion Success"
   else
@@ -154,9 +161,9 @@ exitapp()
 createuniquename()
 {
   local dirpath="$1"
-  local filename="$2"
-  local fileext="$3"
-
+  local filename="${2%.*}"
+  local fileext="${2##*.}"
+  
   targetfile="${dirpath}/${filename}.${fileext}"
 
   # If target file exists, generate a unique name for it
@@ -173,22 +180,77 @@ createuniquename()
   if [ $? -ne 0 ]; then
     showdebug "$output"
     echo "${original_file}: failed to reserve file" >&2
-    exit 1
+    return 1
   fi
 
   echo "$targetfile"
-  exit 0
+  return 0
+}
+
+function setimageparam()
+{
+  local output=''
+  if [ -f "$1" ]; then
+    showdebug write exif UserComment to "$1"
+    output=$(exiftool  -UserComment="$sdparameter" "$1" 2>&1)
+
+    if echo "$output" | grep -q "1 image files updated"; then
+        rm "${1}_original" 2>/dev/null  
+    else
+      showdebug "Fail to write parameter"
+      showdebug $output
+    fi
+  fi
+}
+
+function copyallexif()
+{
+   if [[ -f "$1" && -f "$2" ]]; then
+      output=$(exiftool -tagsfromfile "${1}" -all:all "${2}" 2>&1)
+      # Check if the output contains the success message
+      if echo "$output" | grep -q "1 image files updated"; then
+          rm "${2}_original" 2>/dev/null  
+      else
+        echo "Fail to copy exif from from ${1}" >&2
+        showdebug "Fail to copy exif from from ${1}"
+        showdebug $output
+      fi
+   fi
+} 
+
+function converttojxl()
+{
+  showdebug cjxl $jxlquality $jxleffort "$1" "$2"
+  echo "${filepath}/$original_file > ${2}"
+
+  output=$(cjxl $jxlquality $jxleffort -- "$1" "$2" 2>&1)  
+
+  if [ $? -eq 0 ] && [ -s "$2" ]; then
+    #copy exif from source
+    if [ $sdfiles -eq 1 ]; then
+      setimageparam "$2"
+
+    elif [ $copyexif -eq 1 ]; then 
+      copyallexif "$original_file" "$2"
+
+    fi
+    
+    return 0
+  else
+    showdebug "$output"
+    return 1
+  fi  
 }
 
 parse_arguments "$@"
 
 if [ ! -f "$input_file" ] ; then 
-  echo "file not found" >&2
+  echo "file not found:$input_file" >&2
   exit 1; 
 fi;
 
 if [ ! -s "$input_file" ] ; then 
-  echo "Not an image file" >&2
+  echo "Not an image file:$input_file" >&2
   exit 1; 
 fi;
 
@@ -245,17 +307,19 @@ colorspace=$(echo "$output" | grep -m 1 "ColorSpace" | cut -d: -f2- | sed 's/^[ 
 colorprofile=$(echo "$output" | grep -m 1 "ICC Description" | cut -d: -f2- | sed 's/^[ \t]*//')
 errormessage=$(echo "$output" | grep -m 1 "identify" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
 imagescene=$(echo "$output" | grep  "Scene" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
-ExifUserComment=$(exiftool -UserComment "$input_file" | cut -d: -f2-)
 numberofscene=0
 sdparameter=''
 
 if  [[ $sdfiles -eq 1 ]] && [[ "$filetype" == "jpg" || "$filetype" == "jpeg" || "$filetype" == "png" ]]; then
   sdparameter=$(exiftool -Parameters -UserComment "$input_file" 2>/dev/null | cut -d: -f2-)
-  
+  showdebug sdparameter $sdparameter
   # if parameter not exist treat as regular file
   if [[ ! -n "$sdparameter" ]]; then
     sdfiles=0
   fi
+else
+  # treat as regular file for other file type
+  sdfiles=0
 fi
 
 if [ -n "$imagescene" ]; then
@@ -300,12 +364,12 @@ elif [ -n "$jxlquality" ]; then
   if [[ "$colorprofile" == "AdobeRGB" 
     || "$colorprofile" == "Adobe RGB (1998)" 
     || "$colorprofile" == "Apple RGB" 
+    || "$colorprofile" == "Display P3" 
     || "$colorprofile" == "ProPhoto RGB" 
     || "$colorprofile" == "Generic RGB Profile" 
     || "$colorprofile" == "Wide Gamut RGB" ]]; then
     fixcolorspace=1
-  elif [[ "$colorbit" == "16" && "$colorprofile" == "Display P3" ]] || 
-       [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]] || 
+  elif [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]] || 
        [[ "$colorspace" == "sRGB" && "$colorprofile" == Dot\ Gain* ]] ||
        [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
     fixcolorspace=1
@@ -438,32 +502,29 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
   fi
 
   cd ..
+
   if [[ $sdfiles -eq 1 ]]; then
+    maxconvert=$numberofscene
+
+    if [[ $singlefile ]]; then
+      maxconvert=1
+    fi
+
     showdebug set exif to $tmpsfile
     if [[ $numberofscene -gt 1 ]]; then
-      for (( i = 0; i < $numberofscene; i++ )); do
-        if [ -f "${tmpsfiles}-${i}.${extBridge}" ]; then
-          showdebug write exif to "${tmpsfiles}-${i}.${extBridge}"
-          exiftool  -UserComment="$sdparameter" "${tmpsfiles}-${i}.${extBridge}" >/dev/null 2>/dev/null
-          showdebug exiftool  -UserComment="$sdparameter" "${tmpsfiles}-${i}.${extBridge}"
-        fi
+      for (( i = 0; i < $maxconvert; i++ )); do
+        setimageparam "${tmpsfiles}-${i}.${extBridge}"
       done
     else
-      if [ -f "$tmpsfile" ]; then
-        showdebug write exif to "$tmpsfile"
-        exiftool  -UserComment="$sdparameter" "$tmpsfile" >/dev/null 2>/dev/null
-        showdebug exiftool  -UserComment="$sdparameter" "$tmpsfile"
-      fi
+      setimageparam "$tmpsfile"
     fi
   fi
 fi
 
-if [ -f "${tmpsfiles}-0.${extBridge}" ] ; then
+if [ $numberofscene -gt 1 ] ; then
   baseoutputname="$output_file"
   if [ $rewritefile -eq 0 ]; then
-    fnameout="${baseoutputname%.*}"
-    fextout="${baseoutputname##*.}"
-    baseoutputname=$(createuniquename "$outputdir" "$fnameout" "$fextout")
+    baseoutputname=$(createuniquename "$outputdir" "$baseoutputname")
     if [ $? -ne 0 ];then
       echo fail to reserve file >&2
       exitapp 1
@@ -471,45 +532,43 @@ if [ -f "${tmpsfiles}-0.${extBridge}" ] ; then
     baseoutputname=$(basename "$baseoutputname")
   fi
 
+  maxconvert=$numberofscene
+
+  if [[ $singlefile -eq 1 ]]; then
+    maxconvert=1
+  fi
+
   errorexist=0
 
-  for i in "${tmpsfiles}"-* ; do 
-    input_file="$i"
+  for (( i = 0; i < $maxconvert; i++ )); do
+    input_file="${tmpsfiles}-${i}.${extBridge}"
 
-    if [ "$i" == "${tmpsfiles}-0.${extBridge}" ]; then
-      targetfile="${outputdir}/$baseoutputname"
-    else
-      fnameout="${baseoutputname%.*}"
-      fextout="${baseoutputname##*.}"
-      outputname=$(echo "$i" | sed "s/$tmpsfiles/$fnameout/" | sed "s/.${extBridge}//")
-      targetfile="${outputdir}/${outputname}.${fextout}"
-      if [ $rewritefile -eq 0 ]; then
-        targetfile=$(createuniquename "$outputdir" "$outputname" "$fextout")
-        if [ $? -ne 0 ];then
-          echo fail to reserve file >&2
-          exitapp 1
+    if [[ -f "$input_file" ]]; then
+      if [[ $i -eq 0 ]]; then
+        targetfile="${outputdir}/$baseoutputname"
+      else
+        fnameout="${baseoutputname%.*}"
+        fextout="${baseoutputname##*.}"
+        outputname="${fnameout}-${i}.${fextout}"
+        targetfile="${outputdir}/${outputname}"
+        if [ $rewritefile -eq 0 ]; then
+          targetfile=$(createuniquename "$outputdir" "$outputname")
+          if [ $? -ne 0 ];then
+            echo fail to reserve file >&2
+            exitapp 1
+          fi
         fi
       fi
-    fi
 
-    echo "${filepath}/$original_file > ${targetfile}"
-    showdebug cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
-    output=$(cjxl $jxlquality $jxleffort -- "$input_file" "${targetfile}" 2>&1)
-    
-    if [ $? -eq 0 ] && [ -s "${targetfile}" ]; then
-      #copy exif from source
-      if [ $copyexif -eq 1 ]; then 
-        exiftool -tagsfromfile "$input_file" -all:all "${targetfile}"
-        rm "${targetfile}_original" 2>/dev/null
+      converttojxl "$input_file" "$targetfile"
+      if [[ $? -ne 0 ]]; then
+        errorexist=1
       fi
-    else
-      showdebug "$output"
-      errorexist=1
-      #
     fi
   done
 
   exitapp $errorexist
+
 else 
   if  [ -f "$tmpsfile" ] ; then
     # file is single image
@@ -518,49 +577,13 @@ else
 
   targetfile="${outputdir}/${output_file}"
   if [ $rewritefile -eq 0 ]; then
-    fnameout="${output_file%.*}"
-    fextout="${output_file##*.}"
-    targetfile=$(createuniquename "$outputdir" "$fnameout" "$fextout")
-        if [ $? -ne 0 ];then
-          echo fail to reserve file >&2
-          exitapp 1
-        fi
+    targetfile=$(createuniquename "$outputdir" "$output_file")
+      if [ $? -ne 0 ];then
+        echo fail to reserve file >&2
+        exitapp 1
+      fi
   fi
 
-  echo "${filepath}/$original_file > ${targetfile}"
-  showdebug cjxl $jxlquality $jxleffort "$input_file" "${targetfile}"
-
-  output=$(cjxl $jxlquality $jxleffort -- "$input_file" "${targetfile}" 2>&1)  
-
-  if [ $? -eq 0 ] && [ -s "${targetfile}" ]; then
-    #copy exif from source
-    if [ $sdfiles -eq 1 ]; then
-      showdebug exiftool  -UserComment="$sdparameter" "${targetfile}"
-      output=$(exiftool  -UserComment="$sdparameter" "${targetfile}" 2>&1)
-
-      # Check if the output contains the success message
-      if echo "$output" | grep -q "1 image files updated"; then
-          rm "${targetfile}_original" 2>/dev/null  
-      else
-        echo "Fail to write parameter" >&2
-        showdebug "Fail to write parameter"
-        showdebug $output
-      fi
-
-    elif [ $copyexif -eq 1 ]; then 
-      output=$(exiftool -tagsfromfile "$original_file" -all:all "${targetfile}" 2>&1)
-      # Check if the output contains the success message
-      if echo "$output" | grep -q "1 image files updated"; then
-          rm "${targetfile}_original" 2>/dev/null  
-      else
-        echo "Fail to copy exif from from ${original_file}" >&2
-        showdebug "Fail to copy exif from from ${input_file}"
-        showdebug $output
-      fi
-    fi
-    exitapp 0
-  else
-    showdebug "$output"
-    exitapp 1
-  fi
+  converttojxl "$input_file" "${targetfile}"
+  exitapp $?
 fi

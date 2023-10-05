@@ -40,7 +40,7 @@ parse_arguments()
 {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -del|-exif|-q=*|-e=*|-y|-debug|-ai)
+      -del|-exif|-q=*|-e=*|-y|-debug|-ai|-single)
         #delete source fie 
         params+=("$1")
         shift
