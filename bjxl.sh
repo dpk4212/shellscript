@@ -9,16 +9,15 @@
 # -e=x 1-9 Convertion effort higher is slower
 
 # Function to parse command line arguments and extract attributes and their values
-deletefile=''
 reqursive=0
-copyexif=''
-jxlquality=''
-jxleffort=''
 bjxlpath="$0" 
 basedir=$(dirname "$bjxlpath")  
 cjxlpath="${basedir}/cjxl.sh"
 thread=1
-iccpath=
+showdebug=''
+extlist=()
+params=()
+param=""
 
 if [ ! -f "$cjxlpath" ]; then
   echo $cjxlpath
@@ -32,6 +31,7 @@ zleep()
 
   while [ $threads -gt $2 ]; do
       threads=$(ps | grep "$1" | grep -v grep | wc -l)
+      sleep 0.001
   done
 }
 
@@ -40,30 +40,15 @@ parse_arguments()
 {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -del)
+      -del|-exif|-q=*|-e=*|-y|-debug|-ai)
         #delete source fie 
-        deletefile="$1"
+        params+=("$1")
         shift
         ;;
 
       -r)
         #include sub dir
         reqursive=1
-        shift
-        ;;
-
-      -exif)
-        copyexif="$1"
-        shift
-        ;;
-
-      -q=*)
-        jxlquality="$1"
-        shift
-        ;;
-
-      -e=*)
-        jxleffort="$1"
         shift
         ;;
 
@@ -76,33 +61,64 @@ parse_arguments()
         shift
         ;;
 
+      *)
+        extlist+=("$1")
+        shift
+      ;;
+
     esac
+  done
+
+  # Loop through the array and concatenate elements with spaces
+  for p in "${params[@]}"; do
+      param+=" $p"
+  done
+}
+
+
+fileconvert()
+{
+  ls *.$1  >/dev/null 2>/dev/null|| return
+
+  for i in *.$1 ; do 
+    if [ -f "${i}" ] ; then
+
+      # do not convert JXL and temp files
+      if [[ "${i}" == *.jxl || "${i}" == *.JXL  || "${i}" == .__tmps__* || "${i}" == __tmps__* ]]; then
+        continue
+      fi
+
+      if [ $thread -eq 1 ]; then
+        echo sh "$cjxlpath" "$i" $param
+        sh "$cjxlpath" "$i" $param
+      else 
+        sh "$cjxlpath" "$i" $param 2>/dev/null & 
+        zleep cjxl.sh $thread
+      fi
+    fi
   done
 }
 
 
 dirConvert()
 {
-  echo "$1"
   cd "$1"
-  #pwd
+  pwd
       
-  for i in * ; do 
-    if [ -f "${i}" ] ; then
-      #do not process jxl and temp file
-      if [[ "${i}" == *.jxl || "${i}" == *.JXL  || "${i}" == .__tmps__* || "${i}" == __tmps__* ]]; then
-        continue
-      fi
+  # only convert listed ext
+  if [ ${#extlist[@]} -gt 0 ]; then
+    for ext in "${extlist[@]}"; do
+      fileconvert "$ext"
+    done
 
-      if [ $thread -eq 1 ]; then
-        echo $i
-        sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort
-      else 
-        echo $i
-        sh "$cjxlpath" "$i" $deletefile $copyexif $jxlquality $jxleffort 2>/dev/null & 
-        zleep cjxl.sh $thread
-      fi
-    elif [ -d "${i}" ] && [ $reqursive -eq 1 ] ; then
+  # convert all files
+  else
+    fileconvert "*"
+  fi
+
+
+  for i in * ; do 
+    if [ -d "${i}" ] && [ $reqursive -eq 1 ] ; then
       dirConvert "${i}"
     fi
   done
