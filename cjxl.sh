@@ -19,14 +19,15 @@ jxlquality=''
 jxleffort='-e 7'
 darktable=/Applications/darktable.app/Contents/MacOS/darktable-cli
 iccpath=~/sRGB2014.icc
-input_file=""
-output_file=""
+inputfile=""
+outputfile=""
 
-# intermediate format that will be used to convert between source and target if needed
-# Any format will do as long it supported by cjxl 
-# png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx
-# png is recommended but slow 
-# jpg if you consider conversion speed 
+ 
+# An intermediate format for conversions between the source and target if necessary. 
+# Any format will suffice as long as it's supported by cjxl, 
+# such as png, apng, gif, jpe, jpeg, jpg, exr, ppm, pfm, or pgx. 
+# PNG is recommended for its quality, 
+# while JPG may be chosen for faster conversion speeds.
 extBridge=jpg
 
 parse_arguments() 
@@ -34,13 +35,13 @@ parse_arguments()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -del)
-        #delete source file if convert success
+        # Delete the original file if the conversion is successful.
         deletefile=1
         shift
         ;;
 
       -y)
-        #force rewrite output file
+        # force to rewrite output file
         rewritefile=1
         shift
         ;;
@@ -52,22 +53,24 @@ parse_arguments()
         ;;
 
       -exif)
-        # copy exif from source file
-        # Digikam cant show exiftool but LR can show minimal exif data
-        # set it to 1 so exiftool can show all EXIF info        
+        # Copy the EXIF data from the source file. 
+        # Digikam can't display EXIF data, but Lightroom can show minimal EXIF data. 
+        # Set it to 1 to copy the EXIF data from the source, so Exiftool can display all EXIF information. 
+        # If you set 'copyexif' to 0, use djxl if you plan to convert JXL to another format.
+        # using another tool might result in the loss of image EXIF information.
         copyexif=1
         shift
         ;;
 
       -single)
-        # only convert first image on multi image file such as PDF or inther format
+        # only convert first image on multi-image file such as PDF or other format
         singlefile=1
         shift
         ;;
 
       -ai)
-        # image from stable diffusion store prompt and other parameter on property or user comment 
-        # keep these data on exported file
+        # Image from the stable diffusion keep generated prompt in EXIF properties or user comments. 
+        # Make sure to retain this data in the exported file.
         sdfiles=1
         shift
         ;;
@@ -92,10 +95,10 @@ parse_arguments()
 
       *)
         # Assume the argument is a file path (input or output)
-        if [ -z "$input_file" ]; then
-          input_file="$1"
+        if [ -z "$inputfile" ]; then
+          inputfile="$1"
         else
-          output_file="$1"
+          outputfile="$1"
         fi
         shift
         ;;
@@ -163,7 +166,7 @@ createuniquename()
   local dirpath="$1"
   local filename="${2%.*}"
   local fileext="${2##*.}"
-  
+
   targetfile="${dirpath}/${filename}.${fileext}"
 
   # If target file exists, generate a unique name for it
@@ -192,12 +195,12 @@ function setimageparam()
   local output=''
   if [ -f "$1" ]; then
     showdebug write exif UserComment to "$1"
-    output=$(exiftool  -UserComment="$sdparameter" "$1" 2>&1)
+    output=$(exiftool  -UserComment="$sdprompt" "$1" 2>&1)
 
     if echo "$output" | grep -q "1 image files updated"; then
         rm "${1}_original" 2>/dev/null  
     else
-      showdebug "Fail to write parameter"
+      showdebug "Fail to write UserComment"
       showdebug $output
     fi
   fi
@@ -221,7 +224,7 @@ function copyallexif()
 function converttojxl()
 {
   showdebug cjxl $jxlquality $jxleffort "$1" "$2"
-  echo "${filepath}/$original_file > ${2}"
+  echo $filepath/$original_file ">" $(basename "$2")
 
   output=$(cjxl $jxlquality $jxleffort -- "$1" "$2" 2>&1)  
 
@@ -244,28 +247,28 @@ function converttojxl()
 
 parse_arguments "$@"
 
-if [ ! -f "$input_file" ] ; then 
-  echo "file not found:$input_file" >&2
+if [ ! -f "$inputfile" ] ; then 
+  echo "file not found:$inputfile" >&2
   exit 1; 
 fi;
 
-if [ ! -s "$input_file" ] ; then 
-  echo "Not an image file:$input_file" >&2
+if [ ! -s "$inputfile" ] ; then 
+  echo "Not an image file:$inputfile" >&2
   exit 1; 
 fi;
 
 filepath=$(pwd)
-original_file="$input_file"
-filename=$(basename -- "$input_file")
-inputdir=$(dirname -- "$input_file")
+original_file="$inputfile"
+filename=$(basename -- "$inputfile")
+inputdir=$(dirname -- "$inputfile")
 fname="${filename%.*}"
 fext="${filename##*.}"
 
-if [ -n "$output_file" ]; then
-  outputdir=$(dirname -- "$output_file")  
-  output_file=$(basename -- "$output_file")  
+if [ -n "$outputfile" ]; then
+  outputdir=$(dirname -- "$outputfile")  
+  outputfile=$(basename -- "$outputfile")  
 else
-  output_file="${fname}.jxl"
+  outputfile="${fname}.jxl"
   outputdir="$inputdir"
 fi
 
@@ -280,9 +283,9 @@ tmpsdir="${hidden_file}__tmps__${fname}${fext}__"
 
 fext=$(echo "$fext" | tr '[:upper:]' '[:lower:]')
 
-#this ext list based on images supported by imagemagick
+# this ext list based on images supported by imagemagick
 case $fext in
-  3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|icb|ico|icon|iiq|ipl|j2c|j2k|jng|jnx|jp2|jpc|jpe|jpf|jpeg|jpg|jpm|jif|jiff|jps|jpt|jxl|k25|kdc|mac|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tif|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
+  3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|icb|ico|icon|iiq|ipl|j2c|j2k|jfif|jng|jnx|jp2|jpc|jpe|jpf|jpeg|jpg|jpm|jif|jiff|jps|jpt|jxl|k25|kdc|mac|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tif|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
     supportedfile=1
   ;;
 
@@ -292,11 +295,11 @@ case $fext in
   ;;
 esac
 
-# Run the identify command with structured output and capture it
-# This is needed because we want to know what we have to do before converting the image to JXL
-# llike colorspace RGB,CMYK,Grey, broken color profile, it makes strange color when converting 
-# and might be some file is not an image file 
-output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\nScene: %[scene]\n" "$input_file" 2>&1)
+# Execute the 'identify' command with structured output and capture the results. 
+# This is necessary because we need to assess what needs to be done before converting the image to JXL. 
+# This includes checking for attributes such as color space (RGB, CMYK, Grey), broken color profiles (which can cause unusual colors during conversion), 
+# and the possibility that some files may not be valid image files.
+output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\nScene: %[scene]\n" "$inputfile" 2>&1)
 
 filetype=$(echo "$output" | grep  -m 1 "Filetype" | cut -d: -f2- | sed 's/^[ \t]*//')
 filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
@@ -308,17 +311,34 @@ colorprofile=$(echo "$output" | grep -m 1 "ICC Description" | cut -d: -f2- | sed
 errormessage=$(echo "$output" | grep -m 1 "identify" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
 imagescene=$(echo "$output" | grep  "Scene" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
 numberofscene=0
-sdparameter=''
 
 if  [[ $sdfiles -eq 1 ]] && [[ "$filetype" == "jpg" || "$filetype" == "jpeg" || "$filetype" == "png" ]]; then
-  sdparameter=$(exiftool -Parameters -UserComment "$input_file" 2>/dev/null | cut -d: -f2-)
-  showdebug sdparameter $sdparameter
-  # if parameter not exist treat as regular file
-  if [[ ! -n "$sdparameter" ]]; then
+  exif=$(exiftool -UserComment  -Parameters "$inputfile" 2>/dev/null)
+  sdparameter=$(echo "$exif" | grep -m 1 "Parameters" | cut -d: -f2- )
+  sdusercomment=$(echo "$exif" | grep -m 1 "User Comment" | cut -d: -f2- )
+
+  showdebug sdparameter \'$sdparameter\'
+  showdebug sdusercomment \'$sdusercomment\'
+
+  # check on which parameter prompt exist
+  if [[ -n "$sdusercomment" ]]; then
+    sdprompt="$sdusercomment"
+  elif [[ -n "$sdparameter" ]]; then
+    sdprompt="$sdparameter"
+    if [[ ! -n "$sdusercomment" ]]; then
+      # Attempt to write EXIF data to the source file. 
+      # If the source file doesn't have the 'UserComment' tag in its EXIF data, the write operation will fail for the target file.
+      setimageparam "$inputfile"
+    fi
+  else
+    sdprompt=""
+  fi
+
+  if [[ ! -n "$sdprompt" ]]; then
     sdfiles=0
   fi
 else
-  # treat as regular file for other file type
+  # treat as a regular file for other file type
   sdfiles=0
 fi
 
@@ -331,12 +351,12 @@ if [ -n "$imagescene" ]; then
 fi
 
 if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
-  #not an image file, ImageMagick return width 1 for recognized file but not an image file  
+  # When it's not an image file, ImageMagick returns a width of 1 for a recognized file that is not actually an image file.
   echo "${original_file}:file unrecognized or not an image file" >&2
   exitapp 1;
 fi 
 
-# just in case there's a video disguised as image, there's more but this is the common one
+# Just in case there's a video disguised as an image, although there are more format, this is a common one.
 case $filetype in
   "mp4" | "mkv" | "mov" | "mpg" | "hevc" | "mpeg")
     echo "${original_file}: unsupported file" >&2
@@ -350,7 +370,9 @@ extconvert=0
 
 
 if [[ "$filetype" == "gif" && $numberofscene -gt 1 ]]; then
-    # need more test for this file 
+    # I need to conduct more tests for converting GIF animations to JXL animations.
+    # On my computer, JXL animations are still not playable.
+    # Converting them to HEVC video remains a better option.
     echo "${original_file}: unsupported file" >&2
     exitapp 1;
 fi
@@ -391,34 +413,28 @@ if [ $fixcolorspace -eq 0 ];then
 fi
 
 case "$filetype" in
-  #this ext list based on image supported by cjxl
+  # This list of file extensions is based on the image formats supported by cjxl
   png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx)
     extconvert=0
-    if [[ $sdfiles -eq 1 && "$filetype" == 'png' ]]; then
-      # when i'm playing around with exif if source file from png always raise an error
-      # so convert to jpg first
-      extconvert=1
-      extBridge='jpg'
-    fi
   ;;
 
-  # This ext list based on image supported by darktable
-  # convert all raw files to bridge files first before converting to JXL
-  # At the moment cjxl does not support raw file
+  # This list of file extensions is based on the image formats supported by Darktable. 
+  # Before converting any raw files to JXL, first convert them to a bridge file. 
+  # Currently, cjxl does not support raw files.
   3fr|ari|arw|bay|bmq|cap|cine|cr2|cr3|crw|cs1|dc2|dcr|dng|gpr|erf|fff|exr|ia|iiq|k25|kc2|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|pfm|pxn|qtk|raf|raw|rdc|rw1|rw2|sr2|srf|srw|sti|x3f)
 
-    # Some raw file have a preview image, so extract that first
-    # so we don't have to waste time by converting using darktable
-    showdebug exiftool -b -JpgFromRaw "$input_file"
-    exiftool -b -JpgFromRaw "$input_file" > "$tmpsfile" 2>/dev/null
+    # Some raw files have a preview image, so extract that first to save time and avoid the need to convert using Darktable.
+    showdebug exiftool -b -JpgFromRaw "$inputfile"
+    exiftool -b -JpgFromRaw "$inputfile" > "$tmpsfile" 2>/dev/null
 
     # check the preview file size, if it's zero, run darktable to convert from RAW
     if [ ! -s "$tmpsfile" ]; then 
        rm "$tmpsfile" 2>/dev/null
     else
-       # check preview image dimension, a few raw store the image slightly smaller but some others only store thumbnail preview 
-       # check it first, if the preview is slightly smaller, the difference less then 32 pixels just use it if smaller than that
-       # convert raw file using dark table
+       # Check the dimensions of the preview image. Some raw files store the image slightly smaller, 
+       # while others store only a thumbnail preview. 
+       # Prior to conversion, verify this: if the preview is only slightly smaller, with a difference of less than 32 pixels, then use it. 
+       # Otherwise, proceed to convert the raw file using Darktable."
        ori_width=$((imagewidth - 32))
        preview_width=$(identify -format "%w" "$tmpsfile")
        
@@ -428,15 +444,13 @@ case "$filetype" in
     fi
 
     if [ -f "$tmpsfile" ]; then
-      # most of preview do not include exif data, copy the exif from raw file
-      output=$(exiftool -tagsfromfile "$input_file" -all:all "$tmpsfile")
-      showdebug "$output"
+      # Since most previews do not include EXIF data, copy the EXIF data from the raw file.
+      copyallexif "$inputfile" "$tmpsfile"
     else 
-      # preview not available or to small 
-      # convert to bridge file using darktable 
-      # use SRGB so cjxl can convert the file
-      showdebug $darktable "$input_file" "$tmpsfile" --icc-type SRGB
-      output=$($darktable "$input_file" "$tmpsfile" --icc-type SRGB 2>&1)
+      # If the preview is not available or too small, convert it to a bridge file using Darktable. 
+      # Use the SRGB color profile so that cjxl can successfully convert the file.
+      showdebug $darktable "$inputfile" "$tmpsfile" --icc-type SRGB
+      output=$($darktable "$inputfile" "$tmpsfile" --icc-type SRGB 2>&1)
       
       # if conversion fails remove bridge file and exit
       if [ $? -ne 0 ]; then 
@@ -448,28 +462,28 @@ case "$filetype" in
 
     if [ -f "$tmpsfile" ]; then
       # Conversion success set converted file to input file
-      input_file="$tmpsfile"
+      inputfile="$tmpsfile"
     fi
 
-    # because it already converted so don't need to convert again
+    # Because it has already been converted, there's no need to convert it again.
     fixcolorspace=0
     extconvert=0
   ;;
 
-  # convert all other files that cjxl can't handle using image magick
+  # Convert all other files that cjxl can't handle using ImageMagick.
   *)
     extconvert=1
   ;;
 esac
 
-# convert file if needed
+# Convert the file if it is necessary.
 if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then 
   mkdir "${tmpsdir}" 2>/dev/null
-  cp "$input_file" "${tmpsdir}"
+  cp "$inputfile" "${tmpsdir}"
   cd "${tmpsdir}"
 
-  # convert all image that cjxl can't handle to bridge file 
-  # fix broken corrupt image color space or color profile other than RGB
+  # Convert all images that cjxl can't handle to bridge files.
+  # Fix broken or corrupt images with color spaces or color profiles other than RGB.
   common_args="-quality 100"
 
   if [ $fixcolorspace -eq 1 ] ; then 
@@ -481,9 +495,8 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
       fi
     elif [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]]; then
       specific_args="-colorspace sRGB -type truecolor"
-    elif [[ "$colorspace" == "sRGB" && "$colorprofile" == Dot\ Gain* ]]; then
-      specific_args="-colorspace Gray -type Grayscale"
-    elif [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
+    elif [[ "$colorspace" == "sRGB" && "$colorprofile" == Dot\ Gain* ]] ||
+         [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
       specific_args="-colorspace Gray -type Grayscale"
     else
       specific_args="-colorspace sRGB -type truecolor  +profile \* -profile $iccpath"
@@ -492,8 +505,8 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
     specific_args="" 
   fi
 
-  showdebug convert "$input_file" $common_args $specific_args "$tmpsfile"
-  output=$(convert "$input_file" $common_args $specific_args "../${tmpsfile}" 2>&1)
+  showdebug convert "$inputfile" $common_args $specific_args "$tmpsfile"
+  output=$(convert "$inputfile" $common_args $specific_args "../${tmpsfile}" 2>&1)
 
   if [ $? -ne 0 ] ; then 
     showdebug "$output"
@@ -502,27 +515,12 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
   fi
 
   cd ..
-
-  if [[ $sdfiles -eq 1 ]]; then
-    maxconvert=$numberofscene
-
-    if [[ $singlefile ]]; then
-      maxconvert=1
-    fi
-
-    showdebug set exif to $tmpsfile
-    if [[ $numberofscene -gt 1 ]]; then
-      for (( i = 0; i < $maxconvert; i++ )); do
-        setimageparam "${tmpsfiles}-${i}.${extBridge}"
-      done
-    else
-      setimageparam "$tmpsfile"
-    fi
-  fi
+  extconvert=1
 fi
 
-if [ $numberofscene -gt 1 ] ; then
-  baseoutputname="$output_file"
+# In the case of multi-image files, it will be converted into individual files by ImageMagick.
+if [[ $extconvert -eq 1 && $numberofscene -gt 1 ]] ; then
+  baseoutputname="$outputfile"
   if [ $rewritefile -eq 0 ]; then
     baseoutputname=$(createuniquename "$outputdir" "$baseoutputname")
     if [ $? -ne 0 ];then
@@ -541,9 +539,9 @@ if [ $numberofscene -gt 1 ] ; then
   errorexist=0
 
   for (( i = 0; i < $maxconvert; i++ )); do
-    input_file="${tmpsfiles}-${i}.${extBridge}"
+    inputfile="${tmpsfiles}-${i}.${extBridge}"
 
-    if [[ -f "$input_file" ]]; then
+    if [[ -f "$inputfile" ]]; then
       if [[ $i -eq 0 ]]; then
         targetfile="${outputdir}/$baseoutputname"
       else
@@ -560,30 +558,33 @@ if [ $numberofscene -gt 1 ] ; then
         fi
       fi
 
-      converttojxl "$input_file" "$targetfile"
+      converttojxl "$inputfile" "$targetfile"
       if [[ $? -ne 0 ]]; then
         errorexist=1
       fi
     fi
   done
-
+  if [[ $errorexist -eq 1 ]]; then
+    echo "some image might be not converted" >&2
+  fi
   exitapp $errorexist
 
 else 
-  if  [ -f "$tmpsfile" ] ; then
-    # file is single image
-    input_file="$tmpsfile"
+  # If the conversion is successful and the result exists, change the source to the converted file; 
+  # otherwise, try to convert the original file.
+  if  [[ $extconvert -eq 1 && -f "$tmpsfile" ]] ; then
+    inputfile="$tmpsfile"
   fi
 
-  targetfile="${outputdir}/${output_file}"
+  targetfile="${outputdir}/${outputfile}"
   if [ $rewritefile -eq 0 ]; then
-    targetfile=$(createuniquename "$outputdir" "$output_file")
+    targetfile=$(createuniquename "$outputdir" "$outputfile")
       if [ $? -ne 0 ];then
         echo fail to reserve file >&2
         exitapp 1
       fi
   fi
 
-  converttojxl "$input_file" "${targetfile}"
+  converttojxl "$inputfile" "${targetfile}"
   exitapp $?
 fi
