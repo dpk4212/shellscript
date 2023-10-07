@@ -247,10 +247,15 @@ function converttojxl()
   fi  
 }
 
-_exiftool() {
+_exiftool() 
+{
     output=$(exiftool "$1")
 
+    filetype=$(echo "$output" | grep -m 1 "File Type" | cut -d: -f2-  | tr '[:upper:]' '[:lower:]')
     colortype=$(echo "$output" | grep -m 1 "Color Type" | cut -d: -f2- )
+    mimetype=$(echo "$output" | grep -m 1 "MIME Type" | cut -d: -f2- )
+    fileformat=$(echo "$mimetype" | cut -d/ -f1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    mimetype=$(echo "$mimetype" | cut -d/ -f2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     colormode=$(echo "$output" | grep -m 1 "Color Mode" | cut -d: -f2- )
     colorprofile=$(echo "$output" | grep -m 1 "ICC Profile Name" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     colorprofiledesc=$(echo "$output" | grep -m 1 "Profile Description" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
@@ -259,6 +264,10 @@ _exiftool() {
 
     if [[ ! -n "$colorprofile" && -n "$colorprofiledesc" ]]; then
       colorprofile="$colorprofiledesc"
+    fi
+
+    if [[ "$fileformat" == "application" ]]; then
+      fileformat="$mimetype" 
     fi
 
 }
@@ -367,8 +376,19 @@ esac
 # This is necessary because we need to assess what needs to be done before converting the image to JXL. 
 # This includes checking for attributes such as color space (RGB, CMYK, Grey), broken color profiles (which can cause unusual colors during conversion), 
 # and the possibility that some files may not be valid image files.
-_identify "$inputfile"
 _exiftool "$inputfile"
+#echo fileformat $fileformat
+case $fileformat in
+  "image" | "vnd.adobe.photoshop" | "postscript" | "pdf")
+    supportedfile=1
+    ;;
+    *)
+    echo "${original_file}: unsupported file : $mimetype " >&2
+    exitapp 1;
+  ;;
+esac
+
+_identify "$inputfile"
 
 if  [[ $sdfiles -eq 1 ]] && [[ "$filetype" == "jpg" || "$filetype" == "jpeg" || "$filetype" == "png" ]]; then
   showdebug sdparameter \'$sdparameter\'
@@ -395,20 +415,6 @@ else
   # treat as a regular file for other file type
   sdfiles=0
 fi
-
-if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
-  # When it's not an image file, ImageMagick returns a width of 1 for a recognized file that is not actually an image file.
-  echo "${original_file}:file unrecognized or not an image file" >&2
-  exitapp 1;
-fi 
-
-# Just in case there's a video disguised as an image, although there are more format, this is a common one.
-case $filetype in
-  "mp4" | "mkv" | "mov" | "mpg" | "hevc" | "mpeg")
-    echo "${original_file}: unsupported file" >&2
-    exitapp 1;
-    ;;
-esac
 
 fixcolorspace=0
 converttoColorRGB=0
