@@ -120,9 +120,11 @@ imageinfo()
     showdebug imagewidth $imagewidth
     showdebug imageheight $imageheight
     showdebug colorbit $colorbit
-    showdebug colorspace $colorspace 
-    showdebug colorprofile $colorprofile
-    showdebug numberofscene $numberofscene    
+    showdebug colorspace \'$colorspace\'
+    showdebug colorprofile \'$colorprofile\'
+    showdebug number_of_images \'$number_of_images\'    
+    showdebug extconvert \'$extconvert\'
+    showdebug fixcolorspace \'$fixcolorspace\'
     showdebug errormessage $errormessage
 }
 
@@ -245,6 +247,73 @@ function converttojxl()
   fi  
 }
 
+_exiftool() {
+    output=$(exiftool "$1")
+
+    colortype=$(echo "$output" | grep -m 1 "Color Type" | cut -d: -f2- )
+    colormode=$(echo "$output" | grep -m 1 "Color Mode" | cut -d: -f2- )
+    colorprofile=$(echo "$output" | grep -m 1 "ICC Profile Name" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    colorprofiledesc=$(echo "$output" | grep -m 1 "Profile Description" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    sdparameter=$(echo "$output" | grep  "Parameters" | cut -d: -f2- )
+    sdusercomment=$(echo "$output" | grep  "User Comment" | cut -d: -f2- )
+
+    if [[ ! -n "$colorprofile" && -n "$colorprofiledesc" ]]; then
+      colorprofile="$colorprofiledesc"
+    fi
+
+}
+
+_identify()
+{
+    # Run the identify command and capture its output
+    output=$(identify "$1" 2>&1)
+    identify_data=$(echo "$output" | awk -F "identify: " '{print $1}')
+    errormessage=$(echo "$output" | awk -F "identify: " '{print $2}'| awk '{print $1}')
+    
+    # Count the number of images
+    number_of_images=$(echo "$identify_data" | wc -l)
+    number_of_images=$(echo "$number_of_images" | tr -d '[:space:]')
+
+    # Get the first line and remove file name on the line
+    if [[ $number_of_images -gt 1 ]]; then
+        first_line=$(echo "$identify_data" | head -n 1 | sed "s/${1}\[0\] //")
+    else
+        first_line=$(echo "$identify_data" | head -n 1 | sed "s/$1 //")
+    fi
+
+    # Extract File Type, Image Size, Image Width, Image Height, and Color Bit
+    dataline="$first_line"
+    space=($dataline)
+    space_length=${#space[@]}
+
+    filetype="${space[0]}"
+    image_size="${space[1]}"
+    imagewidth=$(echo "$image_size" | cut -dx -f1)
+    imageheight=$(echo "$image_size" | cut -dx -f2)
+    colorbit="${space[3]}"
+
+    
+    for (( i = 0; i < 4; i++ )); do
+      element="${space[i]}"
+      dataline=$(echo "$dataline" | sed  "s/$element //")
+    done
+    
+    for (( i = 1; i <= 2; i++ )); do
+      element="${space[space_length - i]}"
+      dataline=$(echo "$dataline" | sed  "s/ $element//")
+    done
+
+    element="${space[space_length - 3]}"
+
+    if [[ "$element" == *B ]]; then
+        dataline=$(echo "$dataline" | sed  "s/ $element//")
+    fi
+
+    colorspace="$dataline"
+
+    filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
+}
+
 parse_arguments "$@"
 
 if [ ! -f "$inputfile" ] ; then 
@@ -295,28 +364,13 @@ case $fext in
   ;;
 esac
 
-# Execute the 'identify' command with structured output and capture the results. 
 # This is necessary because we need to assess what needs to be done before converting the image to JXL. 
 # This includes checking for attributes such as color space (RGB, CMYK, Grey), broken color profiles (which can cause unusual colors during conversion), 
 # and the possibility that some files may not be valid image files.
-output=$(identify -format "Filetype: %m\nImageWidth: %w\nImageHeight: %h\nColorBit: %z\nColorSpace: %[colorspace]\nICC Description: %[icc:description]\nScene: %[scene]\n" "$inputfile" 2>&1)
-
-filetype=$(echo "$output" | grep  -m 1 "Filetype" | cut -d: -f2- | sed 's/^[ \t]*//')
-filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
-imagewidth=$(echo "$output" | grep -m 1 "ImageWidth" | cut -d: -f2- | sed 's/^[ \t]*//')
-imageheight=$(echo "$output" | grep -m 1 "ImageHeight" | cut -d: -f2- | sed 's/^[ \t]*//')
-colorbit=$(echo "$output" | grep -m 1 "ColorBit" | cut -d: -f2- | sed 's/^[ \t]*//')
-colorspace=$(echo "$output" | grep -m 1 "ColorSpace" | cut -d: -f2- | sed 's/^[ \t]*//' | sed 's/DirectClass //' | tr -d ' ')
-colorprofile=$(echo "$output" | grep -m 1 "ICC Description" | cut -d: -f2- | sed 's/^[ \t]*//')
-errormessage=$(echo "$output" | grep -m 1 "identify" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
-imagescene=$(echo "$output" | grep  "Scene" | cut -d: -f2- | sed -e 's/^[ \t]*//' -e 's/ .*$//')
-numberofscene=0
+_identify "$inputfile"
+_exiftool "$inputfile"
 
 if  [[ $sdfiles -eq 1 ]] && [[ "$filetype" == "jpg" || "$filetype" == "jpeg" || "$filetype" == "png" ]]; then
-  exif=$(exiftool -UserComment  -Parameters "$inputfile" 2>/dev/null)
-  sdparameter=$(echo "$exif" | grep -m 1 "Parameters" | cut -d: -f2- )
-  sdusercomment=$(echo "$exif" | grep -m 1 "User Comment" | cut -d: -f2- )
-
   showdebug sdparameter \'$sdparameter\'
   showdebug sdusercomment \'$sdusercomment\'
 
@@ -342,14 +396,6 @@ else
   sdfiles=0
 fi
 
-if [ -n "$imagescene" ]; then
-  imagescenes=($imagescene)
-
-  last_index=$(( ${#imagescenes[@]} - 1 ))
-  numberofscene="${imagescenes[last_index]}"
-  numberofscene=$(( $numberofscene + 1 ))
-fi
-
 if [ -z "$filetype" ] || [ $imagewidth -le 1 ];then 
   # When it's not an image file, ImageMagick returns a width of 1 for a recognized file that is not actually an image file.
   echo "${original_file}:file unrecognized or not an image file" >&2
@@ -369,7 +415,7 @@ converttoColorRGB=0
 extconvert=0
 
 
-if [[ "$filetype" == "gif" && $numberofscene -gt 1 ]]; then
+if [[ "$filetype" == "gif" && $number_of_images -gt 1 ]]; then
     # I need to conduct more tests for converting GIF animations to JXL animations.
     # On my computer, JXL animations are still not playable.
     # Converting them to HEVC video remains a better option.
@@ -401,6 +447,7 @@ fi
 if [ $fixcolorspace -eq 0 ];then
   if [[ "$colorprofile" == sRGB* 
     || "$colorspace" == sRGB* 
+    || "$colorspace" == Grayscale* 
     || "$colorprofile" == "uRGB" 
     || "$colorspace" == "uRGB" 
     || "$colorspace" == "Gray" 
@@ -519,7 +566,7 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
 fi
 
 # In the case of multi-image files, it will be converted into individual files by ImageMagick.
-if [[ $extconvert -eq 1 && $numberofscene -gt 1 ]] ; then
+if [[ $extconvert -eq 1 && $number_of_images -gt 1 ]] ; then
   baseoutputname="$outputfile"
   if [ $rewritefile -eq 0 ]; then
     baseoutputname=$(createuniquename "$outputdir" "$baseoutputname")
@@ -530,7 +577,7 @@ if [[ $extconvert -eq 1 && $numberofscene -gt 1 ]] ; then
     baseoutputname=$(basename "$baseoutputname")
   fi
 
-  maxconvert=$numberofscene
+  maxconvert=$number_of_images
 
   if [[ $singlefile -eq 1 ]]; then
     maxconvert=1
