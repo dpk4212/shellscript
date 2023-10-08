@@ -141,15 +141,9 @@ imageinfo()
 
 exitapp()
 {
-  if [ -n "$fname" ] && [ $showdebug -eq 0 ]; then 
-    #cleanup all temp before exiting
-    showdebug delete all temp
-
+  if [[ "$tmpsfiles" == .__tmps__* &&  "$tmpsdir" == .__tmps__*  ]]; then 
     output=$(rm "$tmpsfiles"* 2>&1)
-    showdebug "$output" 
-
     output=$(rm -r "${tmpsdir}" 2>&1)
-    showdebug "$output" 
   fi    
   
   if [ $deletefile -eq 1 ] && [ $1 -eq 0 ]; then
@@ -353,11 +347,24 @@ original_file="$inputfile"
 filename=$(basename -- "$inputfile")
 inputdir=$(dirname -- "$inputfile")
 fname="${filename%.*}"
-fext="${filename##*.}"
+
+if [[ "$filename" == *.* ]]; then
+  fext="${filename##*.}"
+else
+  fext=""
+fi
+
+
 
 if [ -n "$outputfile" ]; then
   outputdir=$(dirname -- "$outputfile")  
   outputfile=$(basename -- "$outputfile")  
+  outputfilelow=$(echo "$outputfile" | tr '[:upper:]' '[:lower:]')
+
+  if [[ "$outputfilelow" != *.jxl ]]; then
+    echo "Target file extension not an JXL file" >&2
+    exit 1
+  fi
 else
   outputfile="${fname}.jxl"
   outputdir="$inputdir"
@@ -397,7 +404,7 @@ case $fileformat in
     ;;
     *)
     echo "${original_file}: unsupported file : $mimetype " >&2
-    exitapp 1;
+    exit 1;
   ;;
 esac
 
