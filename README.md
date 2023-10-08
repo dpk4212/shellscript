@@ -27,7 +27,7 @@ sh cjxl.sh inputimage [-q=1-100] [-e=1-9] [-del] [-y] [-ai] [-single] [outputima
 * -e : effort encoding effort 1-9, smaller is faster, default 7
 * -del : By default, the original file is not deleted when the conversion is successful. However, you can choose to delete it if needed.
 * -y : By default, the destination file is not overwritten if it already exists. However, you can choose to overwrite it if needed.
-* -single : y default, all images in a multi-image file, such as a PDF file, are converted to individual files. However, you can choose to convert only the first image if needed.
+* -single : By default, all images in a multi-image file, such as a PDF file, are converted to individual files. However, you can choose to convert only the first image if needed.
 * outputimage , by default the same name as the original file
 
 ### folder
