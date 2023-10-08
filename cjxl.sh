@@ -17,17 +17,22 @@ copyexif=0
 singlefile=0
 jxlquality=''
 jxleffort='-e 7'
-darktable=/Applications/darktable.app/Contents/MacOS/darktable-cli
-iccpath=~/sRGB2014.icc
 inputfile=""
 outputfile=""
+batchconvert=0
+
+# If the 'darktable' path is empty, we will use ImageMagick for the raw image conversion.
+darktable=/Applications/darktable.app/Contents/MacOS/darktable-cli
+rawfile=0
+
+iccpath=~/sRGB2014.icc
 
  
 # An intermediate format for conversions between the source and target if necessary. 
 # Any format will suffice as long as it's supported by cjxl, 
 # such as png, apng, gif, jpe, jpeg, jpg, exr, ppm, pfm, or pgx. 
 # PNG is recommended for its quality, 
-# while JPG may be chosen for faster conversion speeds.
+# JPG may be chosen for faster conversion speeds.
 extBridge=jpg
 
 parse_arguments() 
@@ -68,10 +73,16 @@ parse_arguments()
         shift
         ;;
 
-      -ai)
-        # Image from the stable diffusion keep generated prompt in EXIF properties or user comments. 
-        # Make sure to retain this data in the exported file.
-        sdfiles=1
+      -raw)
+        # by default when handling raw file we use the preview rather than convert it 
+        # set value to 1 to always convert raw file
+        rawfile=1
+        shift
+        ;;
+
+      -b)
+        # display output progress on batch convert 
+        batchconvert=1
         shift
         ;;
 
@@ -226,13 +237,16 @@ function copyallexif()
 function converttojxl()
 {
   showdebug cjxl $jxlquality $jxleffort "$1" "$2"
-  echo $filepath/$original_file ">" $(basename "$2")
+
+  if [[ $batchconvert -eq 1 ]]; then
+    echo $filepath/$original_file ">" $(basename "$2")
+  fi
 
   output=$(cjxl $jxlquality $jxleffort -- "$1" "$2" 2>&1)  
 
   if [ $? -eq 0 ] && [ -s "$2" ]; then
     #copy exif from source
-    if [ $sdfiles -eq 1 ]; then
+    if [ -n "$sdprompt" ]; then
       setimageparam "$2"
 
     elif [ $copyexif -eq 1 ]; then 
@@ -251,7 +265,7 @@ _exiftool()
 {
     output=$(exiftool "$1")
 
-    filetype=$(echo "$output" | grep -m 1 "File Type" | cut -d: -f2-  | tr '[:upper:]' '[:lower:]')
+    filetype=$(echo "$output" | grep -m 1 "File Type" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     colortype=$(echo "$output" | grep -m 1 "Color Type" | cut -d: -f2- )
     mimetype=$(echo "$output" | grep -m 1 "MIME Type" | cut -d: -f2- )
     fileformat=$(echo "$mimetype" | cut -d/ -f1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
@@ -259,6 +273,8 @@ _exiftool()
     colormode=$(echo "$output" | grep -m 1 "Color Mode" | cut -d: -f2- )
     colorprofile=$(echo "$output" | grep -m 1 "ICC Profile Name" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     colorprofiledesc=$(echo "$output" | grep -m 1 "Profile Description" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    imagewidth=$(echo "$output" | grep -E "Image Width" | awk '{print $NF}' | tail -n 1)
+    imageheight=$(echo "$output" | grep -E "Image Height" | awk '{print $NF}' | tail -n 1)
     sdparameter=$(echo "$output" | grep  "Parameters" | cut -d: -f2- )
     sdusercomment=$(echo "$output" | grep  "User Comment" | cut -d: -f2- )
 
@@ -269,7 +285,6 @@ _exiftool()
     if [[ "$fileformat" == "application" ]]; then
       fileformat="$mimetype" 
     fi
-
 }
 
 _identify()
@@ -319,8 +334,6 @@ _identify()
     fi
 
     colorspace="$dataline"
-
-    filetype=$(echo "$filetype" | tr '[:upper:]' '[:lower:]')
 }
 
 parse_arguments "$@"
@@ -359,11 +372,11 @@ tmpsfiles="${hidden_file}__tmps__${fname}${fext}__"
 tmpsfile="${hidden_file}__tmps__${fname}${fext}__.${extBridge}"
 tmpsdir="${hidden_file}__tmps__${fname}${fext}__"
 
-fext=$(echo "$fext" | tr '[:upper:]' '[:lower:]')
+fext=$(echo "$fext" | tr '[:lower:]' '[:upper:]')
 
 # this ext list based on images supported by imagemagick
 case $fext in
-  3fr|aai|ai|apng|art|arw|ashlar|avif|avs|bayer|bayera|bgr|bgra|bgro|bmp|bmp2|bmp3|brf|cal|cals|cin|cip|clip|cmyk|cmyka|cr2|cr3|crw|cube|cur|cut|data|dcm|dcr|dcraw|dcx|dds|dfont|dng|dot|dpx|dxt1|dxt5|epdf|epi|eps|eps2|eps3|epsf|epsi|ept|ept2|ept3|erf|exr|ff|file|fits|fl32|flv|ftp|fts|ftxt|g3|g4|gif|gif87|gray|graya|group4|gv|hald|hdr|heic|heif|hrz|icb|ico|icon|iiq|ipl|j2c|j2k|jfif|jng|jnx|jp2|jpc|jpe|jpf|jpeg|jpg|jpm|jif|jiff|jps|jpt|jxl|k25|kdc|mac|mask|mat|matte|mef|miff|mng|mono|mpc|mpeg|mpg|mpo|mrw|msl|msvg|mtv|mvg|nef|nrw|null|ora|orf|otb|otf|pal|palm|pam|pbm|pcd|pcds|pcl|pct|pcx|pdb|pdf|pdfa|pef|pes|pfa|pfb|pfm|pgm|pgx|phm|picon|pict|pix|pjpeg|png|png00|png24|png32|png48|png64|png8|pnm|ppm|ps|ps2|ps3|psb|psd|ptif|pwp|qoi|raf|ras|raw|rgb|rgb565|rgba|rgbo|rgf|rla|rle|rmf|rw2|scr|sct|sfw|sgi|six|sixel|sr2|srf|sun|svg|svgz|tga|tif|tiff|tiff64|tile|tim|tm2|ttc|ttf|ubrl|ubrl6|uil|uyvy|vda|vicar|vid|viff|vips|vst|wbmp|webp|wpg|x3f|xbm|xc|xcf|xpm|xps|xv|yaml|yuv )
+  3FR|AAI|AI|APNG|ART|ARW|ASHLAR|AVIF|AVS|BAYER|BAYERA|BGR|BGRA|BGRO|BMP|BMP2|BMP3|BRF|CAL|CALS|CIN|CIP|CLIP|CMYK|CMYKA|CR2|CR3|CRW|CUBE|CUR|CUT|DATA|DCM|DCR|DCRAW|DCX|DDS|DFONT|DNG|DOT|DPX|DXT1|DXT5|EPDF|EPI|EPS|EPS2|EPS3|EPSF|EPSI|EPT|EPT2|EPT3|ERF|EXR|FF|FILE|FITS|FL32|FLV|FTP|FTS|FTXT|G3|G4|GIF|GIF87|GRAY|GRAYA|GROUP4|GV|HALD|HDR|HEIC|HEIF|HRZ|ICB|ICO|ICON|IIQ|IPL|J2C|J2K|JFIF|JNG|JNX|JP2|JPC|JPE|JPF|JPEG|JPG|JPM|JIF|JIFF|JPS|JPT|JXL|K25|KDC|MAC|MASK|MAT|MATTE|MEF|MIFF|MNG|MONO|MPC|MPEG|MPG|MPO|MRW|MSL|MSVG|MTV|MVG|NEF|NRW|NULL|ORA|ORF|OTB|OTF|PAL|PALM|PAM|PBM|PCD|PCDS|PCL|PCT|PCX|PDB|PDF|PDFA|PEF|PES|PFA|PFB|PFM|PGM|PGX|PHM|PICON|PICT|PIX|PJPEG|PNG|PNG00|PNG24|PNG32|PNG48|PNG64|PNG8|PNM|PPM|PS|PS2|PS3|PSB|PSD|PTIF|PWP|QOI|RAF|RAS|RAW|RGB|RGB565|RGBA|RGBO|RGF|RLA|RLE|RMF|RW2|SCR|SCT|SFW|SGI|SIX|SIXEL|SR2|SRF|SUN|SVG|SVGZ|TGA|TIF|TIFF|TIFF64|TILE|TIM|TM2|TTC|TTF|UBRL|UBRL6|UIL|UYVY|VDA|VICAR|VID|VIFF|VIPS|VST|WBMP|WEBP|WPG|X3F|XBM|XC|XCF|XPM|XPS|XV|YAML|YUV )
     supportedfile=1
   ;;
 
@@ -377,7 +390,7 @@ esac
 # This includes checking for attributes such as color space (RGB, CMYK, Grey), broken color profiles (which can cause unusual colors during conversion), 
 # and the possibility that some files may not be valid image files.
 _exiftool "$inputfile"
-#echo fileformat $fileformat
+
 case $fileformat in
   "image" | "vnd.adobe.photoshop" | "postscript" | "pdf")
     supportedfile=1
@@ -388,9 +401,11 @@ case $fileformat in
   ;;
 esac
 
-_identify "$inputfile"
-
-if  [[ $sdfiles -eq 1 ]] && [[ "$filetype" == "jpg" || "$filetype" == "jpeg" || "$filetype" == "png" ]]; then
+# A PNG image from the stable diffusion store contains generation data in its image properties. 
+# Usually, this information is lost during conversion. 
+# However,  this process will preserve that information by storing it in the EXIF user comment.
+sdprompt=""
+if [[ "$filetype" == "PNG" ]]; then
   showdebug sdparameter \'$sdparameter\'
   showdebug sdusercomment \'$sdusercomment\'
 
@@ -404,22 +419,12 @@ if  [[ $sdfiles -eq 1 ]] && [[ "$filetype" == "jpg" || "$filetype" == "jpeg" || 
       # If the source file doesn't have the 'UserComment' tag in its EXIF data, the write operation will fail for the target file.
       setimageparam "$inputfile"
     fi
-  else
-    sdprompt=""
   fi
-
-  if [[ ! -n "$sdprompt" ]]; then
-    sdfiles=0
+elif [[ "$filetype" == "JPEG" ]]; then
+  if [[ -n "$sdusercomment" ]]; then
+    sdprompt="$sdusercomment"
   fi
-else
-  # treat as a regular file for other file type
-  sdfiles=0
 fi
-
-fixcolorspace=0
-converttoColorRGB=0
-extconvert=0
-
 
 if [[ "$filetype" == "gif" && $number_of_images -gt 1 ]]; then
     # I need to conduct more tests for converting GIF animations to JXL animations.
@@ -429,6 +434,84 @@ if [[ "$filetype" == "gif" && $number_of_images -gt 1 ]]; then
     exitapp 1;
 fi
 
+showdebug filetype \'$filetype\'
+
+# check file base on file type 
+case "$filetype" in
+  # This list of file extensions is based on the image formats supported by cjxl
+  PNG|APNG|GIF|JPE|JPEG|JPG|EXR|PPM|PFM|PGX)
+    extconvert=0
+  ;;
+
+  # This list of file extensions is based on the image formats supported by Darktable. 
+  # Before converting any raw files to JXL, first convert them to a bridge file. 
+  # Currently, cjxl does not support raw files.
+  3FR|ARI|ARW|BAY|BMQ|CAP|CINE|CR2|CR3|CRW|CS1|DC2|DCR|DNG|GPR|ERF|FFF|EXR|IA|IIQ|K25|KC2|KDC|MDC|MEF|MOS|MRW|NEF|NRW|ORF|PEF|PFM|PXN|QTK|RAF|RAW|RDC|RW1|RW2|SR2|SRF|SRW|STI|X3F )
+
+    if [[ $rawfile -eq 0 ]]; then
+      # Some raw files have a preview image, so extract that first to save time and avoid the need to convert using Darktable.
+      showdebug exiftool -b -JpgFromRaw "$inputfile"
+      exiftool -b -JpgFromRaw "$inputfile" > "$tmpsfile" 2>/dev/null
+
+      # check the preview file size, if it's zero, run darktable to convert from RAW
+      if [ -s "$tmpsfile" ]; then 
+         # Check the dimensions of the preview image. Some raw files store the image slightly smaller, 
+         # while others store only a thumbnail preview. 
+         # Prior to conversion, verify this: if the preview is only slightly smaller, with a difference of less than 32 pixels, then use it. 
+         # Otherwise, proceed to convert the raw file using Darktable."
+         ori_width=$((imagewidth - 32))
+         preview_width=$(identify -format "%w" "$tmpsfile")
+         
+         if [ $ori_width -gt $preview_width  ]; then
+           rm "$tmpsfile"
+         fi
+      else
+         rm "$tmpsfile" 2>/dev/null
+      fi
+
+      if [[ -f "$tmpsfile" ]]; then
+        # Since most previews do not include EXIF data, copy the EXIF data from the raw file.
+        copyallexif "$inputfile" "$tmpsfile"
+        inputfile="$tmpsfile"
+        extconvert=0
+      else
+        # Since the preview is not available or too small, convert it to a bridge file using Darktable or ImageMagick. 
+        rawfile=1
+      fi
+    fi
+
+    if [ $rawfile -eq 1 ]; then
+      if [[ -n "$darktable" ]]; then
+        # Use the SRGB color profile so that cjxl can successfully convert the file.
+        showdebug $darktable "$inputfile" "$tmpsfile" --icc-file $iccpath
+        output=$($darktable "$inputfile" "$tmpsfile" --icc-file $iccpath 2>&1)
+        
+        if [ $? -eq 0 ]; then 
+          extconvert=0
+          colorspace="sRGB"
+          colorprofile="sRGB"
+          errormessage="" 
+          inputfile="$tmpsfile"
+        else
+          rm "$tmpsfile" 2>/dev/null
+          showdebug "conversion using Darktable fails, attempt to use ImageMagick for the conversion."
+          extconvert=1
+        fi
+      else
+        extconvert=1
+      fi
+    fi      
+  ;;
+
+  # Convert all other files that cjxl can't handle using ImageMagick.
+  *)
+    extconvert=1
+  ;;
+esac
+
+_identify "$inputfile"
+
+fixcolorspace=0
 if [[ "$errormessage" == "CorruptImageProfile" 
   || "$colorprofile" == "e-sRGB" 
   || "$colorspace" == "CMYK" ]] ; then
@@ -450,84 +533,27 @@ elif [ -n "$jxlquality" ]; then
   fi
 fi
 
-if [ $fixcolorspace -eq 0 ];then
-  if [[ "$colorprofile" == sRGB* 
-    || "$colorspace" == sRGB* 
-    || "$colorspace" == Grayscale* 
-    || "$colorprofile" == "uRGB" 
-    || "$colorspace" == "uRGB" 
-    || "$colorspace" == "Gray" 
-    || "$colorspace" == "CIELab" ]]; then
-      fixcolorspace=0
-  else
-    # need more tests for the rest of the image type
-    exitapp 1
-  fi  
+# While converting to JXL with lossy compression, I noticed some color variation for a few color profiles or color spaces. 
+# I need to conduct more tests with other color profiles not on this list because this list is based on the images I have. 
+# For lossless compression, there's no need to convert it, as I've observed that JXL handles it quite well.
+if [[ -n "$jxlquality" ]]; then
+  if [[ $fixcolorspace -eq 0 ]];then
+    if [[ "$colorprofile" == sRGB* 
+      || "$colorspace" == sRGB* 
+      || "$colorspace" == Grayscale* 
+      || "$colorprofile" == "uRGB" 
+      || "$colorspace" == "uRGB" 
+      || "$colorspace" == "Gray" 
+      || "$colorspace" == "CIELab" ]]; then
+        fixcolorspace=0
+    else
+      # need more tests for the rest of the image type
+      echo "${original_file}: unsupported color space or color profile : ${colorspace} ${colorprofile} " >&2
+      exitapp 1
+    fi  
+  fi
 fi
 
-case "$filetype" in
-  # This list of file extensions is based on the image formats supported by cjxl
-  png|apng|gif|jpe|jpeg|jpg|exr|ppm|pfm|pgx)
-    extconvert=0
-  ;;
-
-  # This list of file extensions is based on the image formats supported by Darktable. 
-  # Before converting any raw files to JXL, first convert them to a bridge file. 
-  # Currently, cjxl does not support raw files.
-  3fr|ari|arw|bay|bmq|cap|cine|cr2|cr3|crw|cs1|dc2|dcr|dng|gpr|erf|fff|exr|ia|iiq|k25|kc2|kdc|mdc|mef|mos|mrw|nef|nrw|orf|pef|pfm|pxn|qtk|raf|raw|rdc|rw1|rw2|sr2|srf|srw|sti|x3f)
-
-    # Some raw files have a preview image, so extract that first to save time and avoid the need to convert using Darktable.
-    showdebug exiftool -b -JpgFromRaw "$inputfile"
-    exiftool -b -JpgFromRaw "$inputfile" > "$tmpsfile" 2>/dev/null
-
-    # check the preview file size, if it's zero, run darktable to convert from RAW
-    if [ ! -s "$tmpsfile" ]; then 
-       rm "$tmpsfile" 2>/dev/null
-    else
-       # Check the dimensions of the preview image. Some raw files store the image slightly smaller, 
-       # while others store only a thumbnail preview. 
-       # Prior to conversion, verify this: if the preview is only slightly smaller, with a difference of less than 32 pixels, then use it. 
-       # Otherwise, proceed to convert the raw file using Darktable."
-       ori_width=$((imagewidth - 32))
-       preview_width=$(identify -format "%w" "$tmpsfile")
-       
-       if [ $ori_width -gt $preview_width  ]; then
-         rm "$tmpsfile"
-       fi
-    fi
-
-    if [ -f "$tmpsfile" ]; then
-      # Since most previews do not include EXIF data, copy the EXIF data from the raw file.
-      copyallexif "$inputfile" "$tmpsfile"
-    else 
-      # If the preview is not available or too small, convert it to a bridge file using Darktable. 
-      # Use the SRGB color profile so that cjxl can successfully convert the file.
-      showdebug $darktable "$inputfile" "$tmpsfile" --icc-type SRGB
-      output=$($darktable "$inputfile" "$tmpsfile" --icc-type SRGB 2>&1)
-      
-      # if conversion fails remove bridge file and exit
-      if [ $? -ne 0 ]; then 
-        showdebug "$output"
-        echo "${original_file}: raw conversion fail or file not supported" >&2
-        exitapp 1;
-      fi
-    fi
-
-    if [ -f "$tmpsfile" ]; then
-      # Conversion success set converted file to input file
-      inputfile="$tmpsfile"
-    fi
-
-    # Because it has already been converted, there's no need to convert it again.
-    fixcolorspace=0
-    extconvert=0
-  ;;
-
-  # Convert all other files that cjxl can't handle using ImageMagick.
-  *)
-    extconvert=1
-  ;;
-esac
 
 # Convert the file if it is necessary.
 if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then 

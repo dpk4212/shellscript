@@ -40,7 +40,7 @@ parse_arguments()
 {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -del|-exif|-q=*|-e=*|-y|-debug|-ai|-single)
+      -del|-exif|-q=*|-e=*|-y|-debug|-raw|-single)
         #delete source fie 
         params+=("$1")
         shift
@@ -89,9 +89,9 @@ fileconvert()
       fi
 
       if [ $thread -eq 1 ]; then
-        sh "$cjxlpath" "$i" $param
+        sh "$cjxlpath" "$i" -b $param
       else 
-        sh "$cjxlpath" "$i" $param 2>/dev/null & 
+        sh "$cjxlpath" "$i" -b $param 2>/dev/null & 
         zleep cjxl.sh $thread
       fi
     fi
