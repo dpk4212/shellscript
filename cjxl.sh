@@ -601,6 +601,8 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
   fi
 
   cd ..
+
+  inputfile="$tmpsfile"
   extconvert=1
 fi
 
@@ -650,18 +652,13 @@ if [[ $extconvert -eq 1 && $number_of_images -gt 1 ]] ; then
       fi
     fi
   done
+  
   if [[ $errorexist -eq 1 ]]; then
     echo "some image might be not converted" >&2
   fi
   exitapp $errorexist
 
 else 
-  # If the conversion is successful and the result exists, change the source to the converted file; 
-  # otherwise, try to convert the original file.
-  if  [[ $extconvert -eq 1 && -f "$tmpsfile" ]] ; then
-    inputfile="$tmpsfile"
-  fi
-
   targetfile="${outputdir}/${outputfile}"
   if [ $rewritefile -eq 0 ]; then
     targetfile=$(createuniquename "$outputdir" "$outputfile")
