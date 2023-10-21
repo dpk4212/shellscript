@@ -18,6 +18,7 @@ singlefile=0
 jxlquality=''
 jxleffort='-e 7'
 inputfile=""
+inputfiles=()
 outputfile=""
 batchconvert=0
 
@@ -151,6 +152,8 @@ exitapp()
     showdebug "delete original file \"${original_file}\""
     output=$(rm -- "$original_file" 2>&1)
     showdebug "$output" 
+  else
+    showdebug "original file not deleted do to conversion error"
   fi
 
   imageinfo
@@ -216,13 +219,14 @@ function setimageparam()
 function copyallexif()
 {
    if [[ -f "$1" && -f "$2" ]]; then
+      showdebug exiftool -tagsfromfile "${1}" -all:all "${2}"
       output=$(exiftool -tagsfromfile "${1}" -all:all "${2}" 2>&1)
       # Check if the output contains the success message
       if echo "$output" | grep -q "1 image files updated"; then
           rm "${2}_original" 2>/dev/null  
       else
-        echo "Fail to copy exif from from ${1}" >&2
-        showdebug "Fail to copy exif from from ${1}"
+        echo "Fail to copy exif from ${1}" >&2
+        showdebug "Fail to copy exif from ${1}"
         showdebug $output
       fi
    fi
@@ -247,8 +251,25 @@ function converttojxl()
       copyallexif "$original_file" "$2"
 
     fi
-    
-    return 0
+
+    exifdata=$(exiftool -ImageUniqueID -DateTimeOriginal "$1")
+    sourcephototaken=$(echo "$exifdata" | grep -m 1 "Date/Time Original" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    sourceimageid=$(echo "$exifdata" | grep -m 1 "Image Unique ID" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+    exifdata=$(exiftool -ImageUniqueID -DateTimeOriginal "$2")
+    outputphototaken=$(echo "$exifdata" | grep -m 1 "Date/Time Original" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    outputimageid=$(echo "$exifdata" | grep -m 1 "Image Unique ID" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+    showdebug phototaken "$sourcephototaken" "$outputphototaken"
+    showdebug imageid "$sourceimageid" "$outputimageid"
+
+
+    if [[ "$outputimageid" != "$sourceimageid" || "$outputphototaken" != "$sourcephototaken" ]]; then
+      showdebug "output exif different from original file"
+      return 1
+    else
+      return 0
+    fi
   else
     showdebug "$output"
     return 1
@@ -271,8 +292,12 @@ _exiftool()
     imageheight=$(echo "$output" | grep -E "Image Height" | awk '{print $NF}' | tail -n 1)
     sdparameter=$(echo "$output" | grep  "Parameters" | cut -d: -f2- )
     sdusercomment=$(echo "$output" | grep  "User Comment" | cut -d: -f2- )
+    phototaken=$(echo "$output" | grep -m 1 "Date/Time Original" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    imageid=$(echo "$output" | grep -m 1 "Image Unique ID" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
-    if [[ ! -n "$colorprofile" && -n "$colorprofiledesc" ]]; then
+
+    # sometime color profile on description more acurate
+    if [[ -n "$colorprofiledesc" ]]; then
       colorprofile="$colorprofiledesc"
     fi
 
@@ -301,6 +326,12 @@ _identify()
 
     # Extract File Type, Image Size, Image Width, Image Height, and Color Bit
     dataline="$first_line"
+    
+    if [[ ! -n "$dataline" ]]; then
+      echo "invalid file type" >&2
+      exitapp 1
+    fi
+
     space=($dataline)
     space_length=${#space[@]}
 
@@ -330,13 +361,61 @@ _identify()
     colorspace="$dataline"
 }
 
+checkcolor()
+{
+  fixcolorspace=0
+  if [[ "$errormessage" == "CorruptImageProfile" 
+    || "$colorprofile" == "e-sRGB" 
+    || "$colorspace" == "CMYK" ]] ; then
+    fixcolorspace=1
+
+  elif [ -n "$jxlquality" ]; then
+    if [[ "$colorprofile" == "AdobeRGB" 
+      || "$colorprofile" == "Adobe RGB (1998)" 
+      || "$colorprofile" == "Apple RGB" 
+      || "$colorprofile" == "Display P3" 
+      || "$colorprofile" == "ProPhoto RGB" 
+      || "$colorprofile" == "Generic RGB Profile" 
+      || "$colorprofile" == "Wide Gamut RGB" ]]; then
+      fixcolorspace=1
+    elif [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]] || 
+         [[ "$colorspace" == "sRGB" && "$colorprofile" == Dot\ Gain* ]] ||
+         [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
+      fixcolorspace=1
+    fi
+  fi
+
+  # While converting to JXL with lossy compression, I noticed some color variation for a few color profiles or color spaces. 
+  # I need to conduct more tests with other color profiles not on this list because this list is based on the images I have. 
+  # For lossless compression, there's no need to convert it, as I've observed that JXL handles it quite well.
+  if [[ -n "$jxlquality" ]]; then
+    if [[ $fixcolorspace -eq 0 ]];then
+      if [[ "$colorprofile" == sRGB* 
+        || "$colorspace" == sRGB* 
+        || "$colorspace" == Grayscale* 
+        || "$colorprofile" == "uRGB" 
+        || "$colorspace" == "uRGB" 
+        || "$colorspace" == "Gray" 
+        || "$colorspace" == "CIELab" ]]; then
+          fixcolorspace=0
+      else
+        # need more tests for the rest of the image type
+        echo "${original_file}: unsupported color space or color profile : ${colorspace} ${colorprofile} " >&2
+        exitapp 1
+      fi  
+    fi
+  fi
+}
+
 parse_arguments "$@"
 
+# check if source file exist 
 if [ ! -f "$inputfile" ] ; then 
   echo "file not found:$inputfile" >&2
   exit 1; 
 fi;
 
+# if source file size zero , it's not an image file
 if [ ! -s "$inputfile" ] ; then 
   echo "Not an image file:$inputfile" >&2
   exit 1; 
@@ -381,6 +460,7 @@ tmpsdir="${hidden_file}__tmps__${fname}${fext}__"
 
 fext=$(echo "$fext" | tr '[:lower:]' '[:upper:]')
 
+# check if source file is supported, base on ext
 # this ext list based on images supported by imagemagick
 case $fext in
   3FR|AAI|AI|APNG|ART|ARW|ASHLAR|AVIF|AVS|BAYER|BAYERA|BGR|BGRA|BGRO|BMP|BMP2|BMP3|BRF|CAL|CALS|CIN|CIP|CLIP|CMYK|CMYKA|CR2|CR3|CRW|CUBE|CUR|CUT|DATA|DCM|DCR|DCRAW|DCX|DDS|DFONT|DNG|DOT|DPX|DXT1|DXT5|EPDF|EPI|EPS|EPS2|EPS3|EPSF|EPSI|EPT|EPT2|EPT3|ERF|EXR|FF|FILE|FITS|FL32|FLV|FTP|FTS|FTXT|G3|G4|GIF|GIF87|GRAY|GRAYA|GROUP4|GV|HALD|HDR|HEIC|HEIF|HRZ|ICB|ICO|ICON|IIQ|IPL|J2C|J2K|JFIF|JNG|JNX|JP2|JPC|JPE|JPF|JPEG|JPG|JPM|JIF|JIFF|JPS|JPT|JXL|K25|KDC|MAC|MASK|MAT|MATTE|MEF|MIFF|MNG|MONO|MPC|MPEG|MPG|MPO|MRW|MSL|MSVG|MTV|MVG|NEF|NRW|NULL|ORA|ORF|OTB|OTF|PAL|PALM|PAM|PBM|PCD|PCDS|PCL|PCT|PCX|PDB|PDF|PDFA|PEF|PES|PFA|PFB|PFM|PGM|PGX|PHM|PICON|PICT|PIX|PJPEG|PNG|PNG00|PNG24|PNG32|PNG48|PNG64|PNG8|PNM|PPM|PS|PS2|PS3|PSB|PSD|PTIF|PWP|QOI|RAF|RAS|RAW|RGB|RGB565|RGBA|RGBO|RGF|RLA|RLE|RMF|RW2|SCR|SCT|SFW|SGI|SIX|SIXEL|SR2|SRF|SUN|SVG|SVGZ|TGA|TIF|TIFF|TIFF64|TILE|TIM|TM2|TTC|TTF|UBRL|UBRL6|UIL|UYVY|VDA|VICAR|VID|VIFF|VIPS|VST|WBMP|WEBP|WPG|X3F|XBM|XC|XCF|XPM|XPS|XV|YAML|YUV )
@@ -398,6 +478,8 @@ esac
 # and the possibility that some files may not be valid image files.
 _exiftool "$inputfile"
 
+
+# exit if source file not an image
 case $fileformat in
   "image" | "vnd.adobe.photoshop" | "postscript" | "pdf")
     supportedfile=1
@@ -409,8 +491,8 @@ case $fileformat in
 esac
 
 # A PNG image from the stable diffusion store contains generation data in its image properties. 
-# Usually, this information is lost during conversion. 
-# However,  this process will preserve that information by storing it in the EXIF user comment.
+# Unfortunately, this information sometime lost during conversion. 
+# However, this process will preserve that information by storing it in the EXIF user comment.
 sdprompt=""
 if [[ "$filetype" == "PNG" ]]; then
   showdebug sdparameter \'$sdparameter\'
@@ -447,6 +529,7 @@ showdebug filetype \'$filetype\'
 case "$filetype" in
   # This list of file extensions is based on the image formats supported by cjxl
   PNG|APNG|GIF|JPE|JPEG|JPG|EXR|PPM|PFM|PGX)
+    inputfiles=("$inputfile")
     extconvert=0
   ;;
 
@@ -479,7 +562,7 @@ case "$filetype" in
       if [[ -f "$tmpsfile" ]]; then
         # Since most previews do not include EXIF data, copy the EXIF data from the raw file.
         copyallexif "$inputfile" "$tmpsfile"
-        inputfile="$tmpsfile"
+        inputfiles=("$tmpsfile")
         extconvert=0
       else
         # Since the preview is not available or too small, convert it to a bridge file using Darktable or ImageMagick. 
@@ -498,6 +581,7 @@ case "$filetype" in
           colorspace="sRGB"
           colorprofile="sRGB"
           errormessage="" 
+          inputfiles=("$tmpsfile")
           inputfile="$tmpsfile"
         else
           rm "$tmpsfile" 2>/dev/null
@@ -510,6 +594,39 @@ case "$filetype" in
     fi      
   ;;
 
+  # Since converting using native apps is usually faster, attempt to use native apps first; if that fails, use ImageMagick.
+    HEIC|AVIF)
+
+      # Check the file's color profile. If it needs to be fixed, let ImageMagick do the conversion; otherwise, let the native app handle the conversion.
+      checkcolor
+
+      if [[ $fixcolorspace -eq 0 ]]; then
+        showdebug heif-convert -q 100 "$inputfile" "$tmpsfile"
+        heif-convert -q 100 "$inputfile" "$tmpsfile"  >/dev/null 2>/dev/null
+
+        if [ $? -eq 0 ]; then 
+          if [[ -f "$tmpsfile" ]]; then
+            inputfiles=("$tmpsfile")
+          else
+            counter=1
+            showdebug heic_tmps "${tmpsfiles}-${counter}.${extBridge}"
+            while [ -f "${tmpsfiles}-${counter}.${extBridge}" ]; do
+                inputfiles+=("${tmpsfiles}-${counter}.${extBridge}")
+                ((counter++))
+            done
+          fi
+          extconvert=0
+        else
+          rm "$tmpsfile" 2>/dev/null
+          showdebug "conversion using heif-convert fails, attempt to use ImageMagick for the conversion."
+          extconvert=1
+        fi
+      else
+        showdebug "Use ImageMagick for the conversion."
+        extconvert=1        
+      fi
+    ;;
+
   # Convert all other files that cjxl can't handle using ImageMagick.
   *)
     extconvert=1
@@ -518,48 +635,7 @@ esac
 
 _identify "$inputfile"
 
-fixcolorspace=0
-if [[ "$errormessage" == "CorruptImageProfile" 
-  || "$colorprofile" == "e-sRGB" 
-  || "$colorspace" == "CMYK" ]] ; then
-  fixcolorspace=1
-
-elif [ -n "$jxlquality" ]; then
-  if [[ "$colorprofile" == "AdobeRGB" 
-    || "$colorprofile" == "Adobe RGB (1998)" 
-    || "$colorprofile" == "Apple RGB" 
-    || "$colorprofile" == "Display P3" 
-    || "$colorprofile" == "ProPhoto RGB" 
-    || "$colorprofile" == "Generic RGB Profile" 
-    || "$colorprofile" == "Wide Gamut RGB" ]]; then
-    fixcolorspace=1
-  elif [[ "$colorspace" == "Gray" && "$colorprofile" == sRGB* ]] || 
-       [[ "$colorspace" == "sRGB" && "$colorprofile" == Dot\ Gain* ]] ||
-       [[ "$colorspace" == "sRGB" && "$colorprofile" == Generic\ Gray* ]]; then
-    fixcolorspace=1
-  fi
-fi
-
-# While converting to JXL with lossy compression, I noticed some color variation for a few color profiles or color spaces. 
-# I need to conduct more tests with other color profiles not on this list because this list is based on the images I have. 
-# For lossless compression, there's no need to convert it, as I've observed that JXL handles it quite well.
-if [[ -n "$jxlquality" ]]; then
-  if [[ $fixcolorspace -eq 0 ]];then
-    if [[ "$colorprofile" == sRGB* 
-      || "$colorspace" == sRGB* 
-      || "$colorspace" == Grayscale* 
-      || "$colorprofile" == "uRGB" 
-      || "$colorspace" == "uRGB" 
-      || "$colorspace" == "Gray" 
-      || "$colorspace" == "CIELab" ]]; then
-        fixcolorspace=0
-    else
-      # need more tests for the rest of the image type
-      echo "${original_file}: unsupported color space or color profile : ${colorspace} ${colorprofile} " >&2
-      exitapp 1
-    fi  
-  fi
-fi
+checkcolor
 
 
 # Convert the file if it is necessary.
@@ -591,6 +667,7 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
     specific_args="" 
   fi
 
+ # specific_args="" 
   showdebug convert "$inputfile" $common_args $specific_args "$tmpsfile"
   output=$(convert "$inputfile" $common_args $specific_args "../${tmpsfile}" 2>&1)
 
@@ -602,65 +679,54 @@ if [ $fixcolorspace -eq 1 ] || [ $extconvert -eq 1 ]; then
 
   cd ..
 
-  inputfile="$tmpsfile"
-  extconvert=1
+  # put all the files to be converted on array
+  if [[ $number_of_images -gt 1 ]] ; then
+    if [[ $singlefile -eq 1 ]]; then
+      number_of_images=1
+    fi
+
+    for (( i = 0; i < $number_of_images; i++ )); do
+      if [[ -f "${tmpsfiles}-${i}.${extBridge}" ]]; then
+        inputfiles+=("${tmpsfiles}-${i}.${extBridge}")
+      fi
+    done
+  else
+    copyallexif "$inputfile" "$tmpsfile"
+    inputfiles=("$tmpsfile")  
+  fi
 fi
 
-# In the case of multi-image files, it will be converted into individual files by ImageMagick.
-if [[ $extconvert -eq 1 && $number_of_images -gt 1 ]] ; then
-  baseoutputname="$outputfile"
-  if [ $rewritefile -eq 0 ]; then
-    baseoutputname=$(createuniquename "$outputdir" "$baseoutputname")
-    if [ $? -ne 0 ];then
-      echo fail to reserve file >&2
-      exitapp 1
-    fi
-    baseoutputname=$(basename "$baseoutputname")
+# reserve output file
+if [ $rewritefile -eq 0 ]; then
+  outputfilepath=$(createuniquename "$outputdir" "$outputfile")
+
+  if [ $? -ne 0 ];then
+    echo fail to reserve file >&2
+    exitapp 1
+  fi
+  outputfile=$(basename "$outputfilepath")
+fi
+
+fnameout="${outputfile%.*}"
+fextout="${outputfile##*.}"
+errorexist=0
+
+# convert all the files
+for key in "${!inputfiles[@]}"; do
+
+  if [[ $singlefile -eq 1 && $key -gt 0 ]]; then
+    break
   fi
 
-  maxconvert=$number_of_images
+  inputfile="${inputfiles[key]}"
 
-  if [[ $singlefile -eq 1 ]]; then
-    maxconvert=1
+  if [[ $key -gt 0 ]]; then
+    outputfile="${fnameout}-${key}.${fextout}"
   fi
 
-  errorexist=0
-
-  for (( i = 0; i < $maxconvert; i++ )); do
-    inputfile="${tmpsfiles}-${i}.${extBridge}"
-
-    if [[ -f "$inputfile" ]]; then
-      if [[ $i -eq 0 ]]; then
-        targetfile="${outputdir}/$baseoutputname"
-      else
-        fnameout="${baseoutputname%.*}"
-        fextout="${baseoutputname##*.}"
-        outputname="${fnameout}-${i}.${fextout}"
-        targetfile="${outputdir}/${outputname}"
-        if [ $rewritefile -eq 0 ]; then
-          targetfile=$(createuniquename "$outputdir" "$outputname")
-          if [ $? -ne 0 ];then
-            echo fail to reserve file >&2
-            exitapp 1
-          fi
-        fi
-      fi
-
-      converttojxl "$inputfile" "$targetfile"
-      if [[ $? -ne 0 ]]; then
-        errorexist=1
-      fi
-    fi
-  done
-  
-  if [[ $errorexist -eq 1 ]]; then
-    echo "some image might be not converted" >&2
-  fi
-  exitapp $errorexist
-
-else 
   targetfile="${outputdir}/${outputfile}"
-  if [ $rewritefile -eq 0 ]; then
+
+  if [[ $rewritefile -eq 0 && $key -gt 0 ]]; then
     targetfile=$(createuniquename "$outputdir" "$outputfile")
       if [ $? -ne 0 ];then
         echo fail to reserve file >&2
@@ -669,5 +735,12 @@ else
   fi
 
   converttojxl "$inputfile" "${targetfile}"
-  exitapp $?
+  if [[ $? -ne 0 ]]; then
+    errorexist=1
+  fi
+done
+
+if [[ $errorexist -eq 1 ]]; then
+  echo "some image might be not converted" >&2
 fi
+exitapp $errorexist
