@@ -20,6 +20,7 @@ jxleffort='-e 7'
 inputfile=""
 inputfiles=()
 outputfile=""
+outputdir=""
 batchconvert=0
 
 # If the 'darktable' path is empty, we will use ImageMagick for the raw image conversion.
@@ -87,21 +88,44 @@ parse_arguments()
         shift
         ;;
 
-      -q=*)
+      -q)
         # JXL output quality
-        quality=$(echo "$1"|cut -d= -f2-)
+        quality=$(echo "$2")
         if [ $quality -gt 0 ] && [ $quality -lt 100 ]; then
           jxlquality=" --lossless_jpeg=0 -q $quality "
         fi
         shift
+        shift
         ;;
 
-      -e=*)
+      -e)
         # conversion effort 
-        effort=$(echo "$1"|cut -d= -f2-)
+        effort=$(echo "$2")
         if [ $effort -ge 0 ] && [ $effort -le 9 ]; then
           jxleffort="-e $effort"
         fi
+        shift
+        shift
+        ;;
+
+      -i)
+        # conversion effort 
+        inputfile=$(echo "$2")
+        shift
+        shift
+        ;;
+
+      -o)
+        # conversion effort 
+        outputfile=$(echo "$2")
+        shift
+        shift
+        ;;
+
+      -d)
+        # conversion effort 
+        outputdir=$(echo "$2")
+        shift
         shift
         ;;
 
@@ -192,7 +216,7 @@ createuniquename()
   output=$(touch "$targetfile" 2>&1)
   if [ $? -ne 0 ]; then
     showdebug "$output"
-    echo "${original_file}: failed to reserve file" >&2
+    echo "${original_file}: failed to reserve file $targetfile" >&2
     return 1
   fi
 
@@ -433,10 +457,12 @@ else
   fext=""
 fi
 
-
-
 if [ -n "$outputfile" ]; then
-  outputdir=$(dirname -- "$outputfile")  
+  outputdirtemp=$(dirname -- "$outputfile")  
+  if [[ "$outputdirtemp" != '.' ]]; then
+    outputdir="$outputdirtemp"
+  fi
+
   outputfile=$(basename -- "$outputfile")  
   outputfilelow=$(echo "$outputfile" | tr '[:upper:]' '[:lower:]')
 
@@ -446,8 +472,15 @@ if [ -n "$outputfile" ]; then
   fi
 else
   outputfile="${fname}.jxl"
-  outputdir="$inputdir"
+  if [[ ! -n "$outputdir" ]]; then
+    outputdir="$inputdir"
+  fi  
 fi
+
+if [[ ! -d "$outputdir" ]]; then
+  mkdir -p "$outputdir"
+fi
+
 
 hidden_file='.'
 if [ $showdebug -eq 1 ];then 

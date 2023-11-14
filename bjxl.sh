@@ -18,6 +18,8 @@ showdebug=''
 extlist=()
 params=()
 param=""
+inputdir=$(pwd)
+outputbasedir=""
 
 if [ ! -f "$cjxlpath" ]; then
   echo $cjxlpath
@@ -40,9 +42,16 @@ parse_arguments()
 {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -del|-exif|-q=*|-e=*|-y|-debug|-raw|-single)
+      -del|-exif|-y|-debug|-raw|-single)
         #delete source fie 
         params+=("$1")
+        shift
+        ;;
+
+      -q|-e)
+        #delete source fie 
+        params+=("$1 $2")
+        shift
         shift
         ;;
 
@@ -52,12 +61,20 @@ parse_arguments()
         shift
         ;;
 
-      -thread=*)
+      -thread)
         # Handle attributes with values
-        threadval=$(echo "$1"|cut -d= -f2-)
+        threadval=$(echo "$2")
         if [ $threadval -gt 0 ] && [ $threadval -le 100 ]; then
           thread=$threadval
         fi
+        shift
+        shift
+        ;;
+
+      -d)
+        # Handle attributes with values
+        outputbasedir=$(echo "$2")
+        shift
         shift
         ;;
 
@@ -80,6 +97,11 @@ fileconvert()
 {
   ls *.$1  >/dev/null 2>/dev/null|| return
 
+  if [[ -n "$outputbasedir" ]]; then
+    currentdir=$(pwd)
+    outputdir=$(echo "$currentdir" | sed "s|${inputdir}|${outputbasedir}|")
+  fi
+
   for i in *.$1 ; do 
     if [ -f "${i}" ] ; then
 
@@ -89,9 +111,9 @@ fileconvert()
       fi
 
       if [ $thread -eq 1 ]; then
-        sh "$cjxlpath" "$i" -b $param
+        sh "$cjxlpath" -i "$i" -b $param -d "$outputdir"
       else 
-        sh "$cjxlpath" "$i" -b $param 2>/dev/null & 
+        sh "$cjxlpath" -i "$i" -b $param -d "$outputdir" 2>/dev/null & 
         zleep cjxl.sh $thread
       fi
     fi

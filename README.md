@@ -14,13 +14,14 @@ All binaries should be added to the system's `PATH` environment variable to ensu
 * exiftool
 * imagemagick
 * darktable
+* heif-convert
 
 ## Usage
 
 ### individual image
 
 ```sh
-sh cjxl.sh inputimage [-q=1-100] [-e=1-9] [-del] [-y] [-raw] [-exif] [-single] [outputimage] 
+sh cjxl.sh inputimage [-q 1-100] [-e 1-9] [-del] [-y] [-raw] [-exif] [-single] [-d path] [outputimage] 
 ```
 * inputimage: path to your input image
 * -q : 100 for lossless transcode, 1-99 lossy transcode, default 100
@@ -30,11 +31,12 @@ sh cjxl.sh inputimage [-q=1-100] [-e=1-9] [-del] [-y] [-raw] [-exif] [-single] [
 * -raw : By default, when hadling raw file will use embedded preview if available rather than thew raw file it self, use this option to force conversion from raw file 
 * -exif : By default, exif will be handling by cjxl, but it seems  exiftool and other apps base on it can't read it but Lightroom can, use this option to force copy exif to jxl file so exiftool can read it
 * -single : By default, all images in a multi-image file, such as a PDF file, are converted to individual files. However, you can choose to convert only the first image if needed.
+* -d : Set output directory if output image doest not contain path this input will be used as output directory
 * outputimage , by default the same name as the original file
 
 ### folder
 ```sh
-sh bjxl.sh [-r] [-q=1-100] [-e=1-9] [-del] [-y] [-raw] [-exif] [-single] [-thread=x] [ext] [ext]
+sh bjxl.sh [-r] [-q 1-100] [-e 1-9] [-del] [-y] [-raw] [-exif] [-single] [-thread x] [-d path] [ext] [ext]
 ```
 * -r : recursive, include all sub directories
 * -q : 100 for lossless transcode, 1-99 lossy transcode, default 100
@@ -45,6 +47,7 @@ sh bjxl.sh [-r] [-q=1-100] [-e=1-9] [-del] [-y] [-raw] [-exif] [-single] [-threa
 * -exif : By default, exif will be handling by cjxl, but it seems  exiftool and other apps base on it can't read it but Lightroom can, use this option to force copy exif to jxl file so exiftool can read it
 * -single : By default, all images in a multi-image file, such as a PDF file, are converted to individual files. However, you can choose to convert only the first image if needed.
 * -thread : The default is set to 1 for the maximum number of parallel conversions. You can adjust this number as needed.
+* -d : Set output directory
 * ext : only convert specific extension 
 
 ## Disclaimer
